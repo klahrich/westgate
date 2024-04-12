@@ -1,11 +1,7 @@
-from ast import Call
 import pandas as pd
 import numpy as np
 from flaml import AutoML
 from flaml.automl.ml import norm_confusion_matrix
-from sklearn.model_selection import train_test_split
-from flaml.ml import sklearn_metric_loss_score
-import argparse
 from typing import Dict, List, Callable
 from sklearn.metrics import classification_report
 import locale
@@ -14,6 +10,7 @@ import matplotlib.pyplot as plt
 from pandas.api.types import is_string_dtype
 from dateutil.relativedelta import relativedelta
 from dateutil.parser import parse
+from datetime import date
 import pickle
 from colored import Fore, Back, Style
 from sklearn.ensemble._stacking import StackingClassifier
@@ -23,8 +20,8 @@ pd.set_option('mode.chained_assignment', None)
 locale.setlocale(locale.LC_ALL, '')
 
 
-def load_model(experiment_id:str):
-    with open(experiment_id + '.pkl', 'rb') as f:
+def load_model(experiment_id:str, basefolder='./'):
+    with open(basefolder + experiment_id + '.pkl', 'rb') as f:
         return pickle.load(f)
 
 def precision1(y_pred, y_val):
@@ -47,7 +44,7 @@ def fscore(precision_1, recall_1, beta=1):
     else:
         return ((1+beta**2) * precision_1 * recall_1) / ((beta**2)*precision_1 + recall_1)
 
-class EmptyFrameException(Exception):
+class EmptyDataFrameException(Exception):
     pass
 
 class LendingModel:
@@ -61,6 +58,7 @@ class LendingModel:
         self.basefolder = basefolder
         self.model_file = self.basefolder + self.experiment_id
         self.ylabel = ylabel
+        self.percentiles = None
 
     def save(self):
         with open(str(self.model_file) + '.pkl', 'wb') as f:
@@ -95,19 +93,33 @@ class LendingModel:
         for r in self.thresholds_max:
             df = df[df[r['variable']] <= r['threshold_max']]
 
-         # check that some rows remain
-        if len(df) == 0:
-            raise EmptyFrameException('No rows remaining after filtering.')
-
         return df
 
     def predict_proba(self, df, filter=True, engineer=True):
+
         if filter:
             df = self.filter_df(df)
+            if len(df) == 0:
+                raise EmptyDataFrameException('No rows remaining after filtering.')
+
         if engineer:
             df = self.feature_engineer(df)
-        preds =  self.automl.predict_proba(df[self.features].to_numpy())[:, 1]
-        return pd.DataFrame({'pred_proba': preds}).set_index(df.index)
+            if len(df) == 0:
+                raise EmptyDataFrameException('No rows remaining after feature engineering.')
+
+        #prediction_df = df[self.features].to_numpy()
+        preds =  self.automl.predict_proba(df[self.features])
+
+        if preds.shape[0] > 1:
+            preds = preds[:, 1]
+            return pd.DataFrame({'pred_proba': preds}).set_index(df.index)
+
+        elif preds.shape[0] == 1:
+            pred = preds[0, 1]
+            return pred
+
+        else:
+            raise Exception('Wrong preds dimension')
 
     def predict(self, df):
         df = self.filter_df(df)
@@ -169,41 +181,35 @@ class LendingModel:
     def set_features(self, X_train):
         self.features = [c for c in X_train.columns if c not in list(self.extra_features)]
 
-    def _feature_engineer(self, X: pd.DataFrame, y) -> pd.DataFrame:
+    def _feature_engineer(self, X: pd.DataFrame) -> pd.DataFrame:
 
         def time_diff(X):
             request_date = X['request_date']
             dob = X['dob']
             try:
-                request_date = parse(request_date)
-                dob = parse(dob)
+                if type(request_date)==str:
+                    request_date = request_date[:10]
+                    request_date = parse(request_date)
+                if type(dob)==str:
+                    dob = dob[:10]
+                    dob = parse(dob)
                 return relativedelta(request_date, dob).years
             except Exception as e:
-                return None
+                print(f'Error calculating age with dob {dob} and request_date {request_date}')
+                print(e)
         
         assert 'dob' in X.columns
-        assert is_string_dtype(X['dob'])
         assert 'request_date' in X.columns
-        assert is_string_dtype(X['request_date'])
-
-        X['dob'] = X['dob'].str[:10]
-        X['request_date'] = X['request_date'].str[:10]
 
         X['age'] = X[['request_date', 'dob']].apply(time_diff, axis=1)
 
-        non_na_idx = X['age'].notna()
+        return X
 
-        X = X[non_na_idx]
-        if y is not None:
-            y = y[non_na_idx]
-
-        return X, y
-
-    def feature_engineer(self, X_train, y_train=None, X_test=None, y_test=None):
+    def feature_engineer(self, X_train, X_test=None):
         if self.automl is None:
             self.set_features_in(X_train)
 
-        X_train, y_train = self._feature_engineer(X_train, y_train)
+        X_train = self._feature_engineer(X_train)
 
         if self.automl is None:
             self.set_features(X_train)
@@ -211,11 +217,11 @@ class LendingModel:
         X_train = X_train[self.features]
 
         if X_test is not None:
-            X_test, y_test = self._feature_engineer(X_test, y_test)
+            X_test = self._feature_engineer(X_test)
             X_test = X_test[self.features]
-            return X_train, y_train, X_test, y_test
+            return X_train, X_test
 
-        return X_train, y_train     
+        return X_train
 
     def fit(self, X_train, y_train, X_test=None, y_test=None, extra={}, 
             time_budget=10, automl_config={}, show_stats=True, 
@@ -259,7 +265,7 @@ class LendingModel:
             y_pred_proba = automl.predict_proba(X_test)[:, 1]
 
             if threshold is None:
-                threshold = np.percentile(y_pred_proba, percentile)
+                threshold = np.percentile(y_pred_proba, percentile * 100)
 
             y_pred = np.where(y_pred_proba >= threshold, 1, 0)
     
@@ -269,6 +275,9 @@ class LendingModel:
 
                 print('Predicted ' + self.ylabel + '[TEST]:')
                 print(str(y_pred.sum()) + ' (' + str(round(y_pred.sum() / y_pred.size * 100, 1)) + '%)') 
+
+                y_pred_proba_df = pd.DataFrame({'y_pred_test': y_pred_proba})
+                y_pred_proba_df.plot.hist()
 
                 y_pred_proba_bins = pd.cut(y_pred_proba, 10, duplicates = 'drop')
                 print('\ny_pred_proba distribution:')
@@ -296,6 +305,7 @@ class LendingModel:
                     if k.startswith('test_'):
                         X_test_df[k] = v
 
+                print('Saving ' + 'X_test-' + self.experiment_id + '.csv')
                 X_test_df.to_csv(self.basefolder + 'X_test-' + self.experiment_id + '.csv', index=False)
 
             return y_pred_proba, y_pred, None
@@ -346,14 +356,34 @@ class UWModel(LendingModel):
 
     def filter_df(self, original_df):
         df = super().filter_df(original_df)
+
+        def _filter(df, criteria, message):
+            tmp = len(df)
+            df = df.loc[criteria]
+            if len(df) < tmp:
+                print(message)
+            return df
+
         if 'error' in df.columns:
-            df = df[df['error'].isna()]
+            df = _filter(df, 
+                        df['error'].isna(), 
+                        "Rows with 'error' column not NA will be discarded.")
+
         if 'Id' in df.columns:
-            df = df[~df['Id'].isna()]
+            df = _filter(df,
+                        ~df['Id'].isna(),
+                        "Rows with 'Id' column NA will be discarded.")
+
         if 'request_date' in df.columns:
-            df = df[~df['request_date'].isna()]
+            df = _filter(df,
+                        ~df['request_date'].isna(),
+                        "Rows with 'request_date' column NA will be discarded.")
+
         if 'account_age_days' in df.columns:
-            df = df[df['account_age_days'] > 0]
+            df = _filter(df,
+                        df['account_age_days'] > 0,
+                        "Rows with 'account_age_days' column not positive will be discarded.")
+
         return df
 
     def non_features(self):
@@ -479,78 +509,78 @@ class UWModel(LendingModel):
                         show_plots, save_test, save_model, threshold, percentile)
 
 
-class RefusalModel(LendingModel):
+# class RefusalModel(LendingModel):
 
-    def __init__(self, experiment_id:str, threshold:float = 0.5):
-        super().__init__(experiment_id, threshold)
+#     def __init__(self, experiment_id:str, threshold:float = 0.5):
+#         super().__init__(experiment_id, threshold)
 
-    def y1_label(self) -> str:
-        return 'Refused File(s)'
+#     def y1_label(self) -> str:
+#         return 'Refused File(s)'
 
-    def non_features(self):
-        return super().non_features()
+#     def non_features(self):
+#         return super().non_features()
 
-    def filter_df(self, original_df):
-        return super().filter_df(original_df)
+#     def filter_df(self, original_df):
+#         return super().filter_df(original_df)
 
-    def update_extra(self, extra, X_train, y_train, X_test, y_test) -> Dict:
-        return super().update_extra(extra, X_train, y_train, X_test, y_test)
+#     def update_extra(self, extra, X_train, y_train, X_test, y_test) -> Dict:
+#         return super().update_extra(extra, X_train, y_train, X_test, y_test)
 
-    def feature_engineer(self, df: pd.DataFrame) -> pd.DataFrame:
+#     def feature_engineer(self, df: pd.DataFrame) -> pd.DataFrame:
 
-        df['sum_employer_income_90d'] = (
-            df['sum_employer_income_current_month'] + 
-            df['sum_employer_income_previous_month'] + 
-            df['sum_employer_income_2_months_ago']
-        )
+#         df['sum_employer_income_90d'] = (
+#             df['sum_employer_income_current_month'] + 
+#             df['sum_employer_income_previous_month'] + 
+#             df['sum_employer_income_2_months_ago']
+#         )
         
-        df['sum_micro_loan_payments_90d'] = (
-            df['sum_micro_loan_payments_current_month'] + 
-            df['sum_micro_loan_payments_previous_month'] + 
-            df['sum_micro_loan_payments_2_months_ago']
-        )
+#         df['sum_micro_loan_payments_90d'] = (
+#             df['sum_micro_loan_payments_current_month'] + 
+#             df['sum_micro_loan_payments_previous_month'] + 
+#             df['sum_micro_loan_payments_2_months_ago']
+#         )
 
-        df['sum_loan_payments_90d'] = (
-            df['sum_loan_payments_current_month'] + 
-            df['sum_loan_payments_previous_month'] + 
-            df['sum_loan_payments_2_months_ago']
-        )
+#         df['sum_loan_payments_90d'] = (
+#             df['sum_loan_payments_current_month'] + 
+#             df['sum_loan_payments_previous_month'] + 
+#             df['sum_loan_payments_2_months_ago']
+#         )
 
-        df['sum_total_income_90d'] = (
-            df['sum_total_income_current_month'] + 
-            df['sum_total_income_previous_month'] + 
-            df['sum_total_income_2_months_ago']
-        )
+#         df['sum_total_income_90d'] = (
+#             df['sum_total_income_current_month'] + 
+#             df['sum_total_income_previous_month'] + 
+#             df['sum_total_income_2_months_ago']
+#         )
 
-        df['micro_loans_debt_ratio_current_month'] = np.divide(
-                df['sum_micro_loan_payments_current_month'],
-                df['sum_employer_income_current_month'],
-                out=np.zeros_like(df.iloc[:, 1]),
-                where=(df['sum_employer_income_current_month'] != 0)
-        )
+#         df['micro_loans_debt_ratio_current_month'] = np.divide(
+#                 df['sum_micro_loan_payments_current_month'],
+#                 df['sum_employer_income_current_month'],
+#                 out=np.zeros_like(df.iloc[:, 1]),
+#                 where=(df['sum_employer_income_current_month'] != 0)
+#         )
 
-        df['micro_loans_debt_ratio_previous_month'] = np.divide(
-            df['sum_micro_loan_payments_previous_month'],
-            df['sum_employer_income_previous_month'],
-            out=np.zeros_like(df.iloc[:, 1]),
-            where=(df['sum_employer_income_previous_month'] != 0)
-        )
+#         df['micro_loans_debt_ratio_previous_month'] = np.divide(
+#             df['sum_micro_loan_payments_previous_month'],
+#             df['sum_employer_income_previous_month'],
+#             out=np.zeros_like(df.iloc[:, 1]),
+#             where=(df['sum_employer_income_previous_month'] != 0)
+#         )
 
-        df['micro_loans_debt_ratio_2_months_ago'] = np.divide(
-            df['sum_micro_loan_payments_2_months_ago'],
-            df['sum_employer_income_2_months_ago'],
-            out=np.zeros_like(df.iloc[:, 1]),
-            where=(df['sum_employer_income_2_months_ago'] != 0)
-        )
+#         df['micro_loans_debt_ratio_2_months_ago'] = np.divide(
+#             df['sum_micro_loan_payments_2_months_ago'],
+#             df['sum_employer_income_2_months_ago'],
+#             out=np.zeros_like(df.iloc[:, 1]),
+#             where=(df['sum_employer_income_2_months_ago'] != 0)
+#         )
 
-        df['micro_loans_debt_ratio_90d'] = np.divide(
-            df['sum_micro_loan_payments_90d'],
-            df['sum_total_income_90d'],
-            out=np.zeros_like(df.iloc[:, 1]),
-            where=(df['sum_total_income_90d'] != 0)
-        )
+#         df['micro_loans_debt_ratio_90d'] = np.divide(
+#             df['sum_micro_loan_payments_90d'],
+#             df['sum_total_income_90d'],
+#             out=np.zeros_like(df.iloc[:, 1]),
+#             where=(df['sum_total_income_90d'] != 0)
+#         )
         
-        return df
+#         return df
 
 
 # class CombinedModel:

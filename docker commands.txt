@@ -1,0 +1,3 @@
+docker build -t westgate-docker .
+
+docker run -d -p 8080:8080 westgate-docker
