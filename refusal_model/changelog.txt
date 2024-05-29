@@ -1,0 +1,4 @@
+v0.4
+- feature engineering: externalized in class FeatureEng; multiple instances can be added
+- logging instead of printing
+- refusal model v0.4 new features: non_classified_income and monthly_repayment_capacity
