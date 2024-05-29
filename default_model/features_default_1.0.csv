@@ -1,7 +1,7 @@
 variable,type,threshold_min,threshold_max
-Id,extra,,
-principal,extra,,
-total_paid,extra,,
+Id,optional,,
+principal,optional,,
+total_paid,optional,,
 request_date,extra,,
 dob,extra,,
 status,target,,

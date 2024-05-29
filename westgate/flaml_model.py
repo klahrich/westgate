@@ -1,9 +1,9 @@
 import pandas as pd
 import numpy as np
 from flaml import AutoML
-from flaml.automl.ml import norm_confusion_matrix
+#from flaml.automl.ml import norm_confusion_matrix
 from typing import Dict, List, Callable
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, confusion_matrix
 import locale
 from flaml.automl.data import get_output_from_log
 import matplotlib.pyplot as plt
@@ -54,6 +54,8 @@ class LendingModel:
         self.log_file = basefolder + 'log_' + str(experiment_id) + '.log'
         self.feature_file = basefolder + 'features_' + str(experiment_id) + '.csv'
         self.features_df = self.read_feature_file()
+        self.features_in = self.set_features_in()
+        self.features = None
         self.automl = None
         self.basefolder = basefolder
         self.model_file = self.basefolder + self.experiment_id
@@ -65,6 +67,14 @@ class LendingModel:
             pickle.dump(self, f)
 
     def update_extra(self, extra, X_train, y_train, X_test, y_test) -> Dict:
+        for f in list(self.extra_features):
+            extra['train_' + f] = X_train[f]
+            extra['test_' + f] = X_test[f]
+
+        for f in list(self.optional_features):
+            extra['train_' + f] = X_train[f]
+            extra['test_' + f] = X_test[f]
+
         return extra
 
     def read_feature_file(self):
@@ -81,6 +91,7 @@ class LendingModel:
         self.target = target
 
         self.extra_features = features_df.loc[features_df.type=='extra', 'variable']
+        self.optional_features = features_df.loc[features_df.type=='optional', 'variable']
 
         return features_df
 
@@ -88,11 +99,11 @@ class LendingModel:
         df = original_df.copy()
 
         for r in self.thresholds_min:
-            df = df[df[r['variable']] >= r['threshold_min']]
+            df = df[~(df[r['variable']] < r['threshold_min'])]
 
         for r in self.thresholds_max:
-            df = df[df[r['variable']] <= r['threshold_max']]
-
+            df = df[~(df[r['variable']] > r['threshold_max'])]
+            
         return df
 
     def predict_proba(self, df, filter=True, engineer=True):
@@ -175,11 +186,15 @@ class LendingModel:
 
         return X_train, X_test, y_train, y_test, extra 
 
-    def set_features_in(self, X_train):
-        self.features_in = [c for c in X_train.columns if c not in list(self.extra_features)]
+    def set_features_in(self):
+        return [c for c in list(self.features_df['variable']) 
+                if (c not in list(self.optional_features))
+                and (c != self.target)]
 
     def set_features(self, X_train):
-        self.features = [c for c in X_train.columns if c not in list(self.extra_features)]
+        return [c for c in X_train.columns if 
+                (c not in list(self.extra_features))
+                and (c not in list(self.optional_features))]
 
     def _feature_engineer(self, X: pd.DataFrame) -> pd.DataFrame:
 
@@ -206,13 +221,11 @@ class LendingModel:
         return X
 
     def feature_engineer(self, X_train, X_test=None):
-        if self.automl is None:
-            self.set_features_in(X_train)
 
         X_train = self._feature_engineer(X_train)
 
-        if self.automl is None:
-            self.set_features(X_train)
+        if self.features is None:
+            self.features = self.set_features(X_train)
 
         X_train = X_train[self.features]
 
@@ -265,7 +278,7 @@ class LendingModel:
             y_pred_proba = automl.predict_proba(X_test)[:, 1]
 
             if threshold is None:
-                threshold = np.percentile(y_pred_proba, percentile * 100)
+                threshold = np.percentile(y_pred_proba, percentile)
 
             y_pred = np.where(y_pred_proba >= threshold, 1, 0)
     
@@ -283,13 +296,27 @@ class LendingModel:
                 print('\ny_pred_proba distribution:')
                 print(y_pred_proba_bins.value_counts())
 
-                print('\nBest validation loss: ' + str(-automl.best_loss))
+                print('\nBest validation loss: ' + str(automl.best_loss))
 
                 print('\n')
                 print(classification_report(y_test, y_pred))
+
+                print('Confusion matrix:')
+                print(confusion_matrix(y_test, y_pred))
+                print('\n')
                 
-                print('Normalized confusion matrix:')
-                print(norm_confusion_matrix(y_test, y_pred))
+                print('Normalized confusion matrix:\n')
+
+                print('By true:')
+                print(confusion_matrix(y_test, y_pred, normalize='true'))
+                print('\n')
+
+                print('By pred:')
+                print(confusion_matrix(y_test, y_pred, normalize='pred'))
+                print('\n')
+                
+                print('By all:')
+                print(confusion_matrix(y_test, y_pred, normalize='all'))
                 print('\n')
 
             #print('Best model: ')
@@ -303,7 +330,7 @@ class LendingModel:
 
                 for k,v in extra.items():
                     if k.startswith('test_'):
-                        X_test_df[k] = v
+                        X_test_df[k] = v.reset_index(drop=True)
 
                 print('Saving ' + 'X_test-' + self.experiment_id + '.csv')
                 X_test_df.to_csv(self.basefolder + 'X_test-' + self.experiment_id + '.csv', index=False)
@@ -355,34 +382,39 @@ class UWModel(LendingModel):
         self.repay = repay
 
     def filter_df(self, original_df):
+
+        bfr = len(original_df)
         df = super().filter_df(original_df)
+        after = len(df)
+
+        print(f'{bfr - after} rows removed by threshold filtering')
 
         def _filter(df, criteria, message):
             tmp = len(df)
             df = df.loc[criteria]
             if len(df) < tmp:
-                print(message)
+                print(f'{tmp - len(df)}' + ' ' + message)
             return df
 
         if 'error' in df.columns:
             df = _filter(df, 
                         df['error'].isna(), 
-                        "Rows with 'error' column not NA will be discarded.")
+                        "Rows with 'error' column not NA have been discarded.")
 
         if 'Id' in df.columns:
             df = _filter(df,
                         ~df['Id'].isna(),
-                        "Rows with 'Id' column NA will be discarded.")
+                        "Rows with 'Id' column NA have been discarded.")
 
         if 'request_date' in df.columns:
             df = _filter(df,
                         ~df['request_date'].isna(),
-                        "Rows with 'request_date' column NA will be discarded.")
+                        "Rows with 'request_date' column NA have been discarded.")
 
         if 'account_age_days' in df.columns:
             df = _filter(df,
                         df['account_age_days'] > 0,
-                        "Rows with 'account_age_days' column not positive will be discarded.")
+                        "Rows with 'account_age_days' column not positive have been discarded.")
 
         return df
 
@@ -392,10 +424,6 @@ class UWModel(LendingModel):
     def update_extra(self, extra, X_train, y_train, X_test, y_test):
         extra['train_profit'] = X_train['total_paid'] - X_train['principal']
         extra['test_profit'] = X_test['total_paid'] - X_test['principal']
-
-        for f in list(self.extra_features):
-            extra['train_' + f] = X_train[f]
-            extra['test_' + f] = X_test[f]
 
         return extra
     

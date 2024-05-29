@@ -2,3 +2,12 @@ data/
 .ipynb_checkpoints/
 __pycache__/
 .env-flaml/
+.venv-westgate
+.env
+refusal_model/*.pkl
+default_model/*.pkl
+model_binaries/
+notebooks/*.csv
+notebooks/*.xlsx
+refusal_model/*.csv
+refusal_model/*.xlsx

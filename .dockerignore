@@ -2,5 +2,13 @@ __pycache__
 env
 data
 .env-flaml
+.venv-westgate
+.env
+.dvc
+.dvcignore
 default_model
 refusal_model
+notebooks
+mlruns.db
+analysis
+graveyard

@@ -4,11 +4,21 @@ from westgate.flaml_model import *
 import pandas as pd
 from pydantic import BaseModel
 from typing import Literal
-from datetime import date
+from datetime import date, datetime
+import os
+from supabase import create_client, Client
+
+# from dotenv import load_dotenv
+# load_dotenv()
 
 app = FastAPI()
-model_refusal = load_model('refusal_0.2', basefolder='model_binaries/')
+model_refusal = load_model('refusal_0.3', basefolder='model_binaries/')
 model_default = load_model('default_1.0', basefolder='model_binaries/')
+
+SUPABASE_URL = os.environ['SUPABASE_URL']
+SUPABASE_KEY = os.environ['SUPABASE_KEY']
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 class LoanRequest(BaseModel):
     
@@ -81,28 +91,70 @@ def index():
     return {'message': 'Westgate UW'}
 
 @app.post('/predict')
-def predict_proba(data:LoanRequest):
+def predict_proba(data:LoanRequest, org='westgate'):
     data = data.dict()
     df = pd.DataFrame.from_dict([data])
-    pred_refusal = model_refusal.predict_proba(df, filter=True, engineer=True)
-    pred_default = model_default.predict_proba(df, filter=True, engineer=True)
+    pred_refusal = model_refusal.predict_proba(df, filter=True, engineer=True).item()
+    pred_default = model_default.predict_proba(df, filter=True, engineer=True).item()
 
-    idx_refusal = np.digitize(0.3, list(model_refusal.percentiles.values()))
-    percentile_refusal = list(model_refusal.percentiles.keys())[idx_refusal]
+    percentiles_refusal = list(model_refusal.percentiles.keys())
+    percentiles_default = list(model_default.percentiles.keys())
 
-    idx_default = np.digitize(0.3, list(model_default.percentiles.values()))
-    percentile_default = list(model_default.percentiles.keys())[idx_default]
+    #refusal
+
+    idx_refusal = np.digitize(pred_refusal, list(model_refusal.percentiles.values()))
+
+    if idx_refusal < len(percentiles_refusal):
+        percentile_refusal = list(model_refusal.percentiles.keys())[idx_refusal]
+    else:
+        percentile_refusal = 100
+
+    #default
+
+    idx_default = np.digitize(pred_default, list(model_default.percentiles.values()))
+
+    if idx_default < len(percentiles_default):
+        percentile_default = list(model_default.percentiles.keys())[idx_default]
+    else:
+        percentile_default = 100
+
+    # 80th percentile default 1.0: 0.4055162847042084
+    # 25th percentile refusal 0.2: 0.5865068435668945
+
+    if (pred_refusal >= model_refusal.percentiles[15]) or \
+        (pred_default >= model_default.percentiles[85]):
+        uw_decision = 'refuse'
+    else:
+        uw_decision = 'accept'
+
+    supabase.table('logs').insert({
+        'refusal_score': pred_refusal,
+        'refusal_percentile': percentile_refusal,
+        'default_score': pred_default,
+        'default_percentile': percentile_default,
+        'organization': org,
+        'decision': uw_decision
+    }).execute()
 
     return {
-        'refusal':{
-            'score': pred_refusal.item(),
-            'percentile': percentile_refusal
-        },
-        'default': {
-            'score': pred_default.item(),
-            'percentile': percentile_default
-        }
+        'uw_decision': uw_decision,
+        'score': 0.5 * (pred_refusal + pred_default),
+        'percentile': 0.5 * (percentile_refusal + percentile_default)
     }
+
+    # return {
+    #     'refusal':{
+    #         'score': pred_refusal,
+    #         'percentile': percentile_refusal
+    #     },
+    #     'default': {
+    #         'score': pred_default,
+    #         'percentile': percentile_default
+    #     },
+    #     'uw_decision': uw_decision,
+    #     'version': 'v1.0',
+    #     'timestamp': datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    # }
     
 
 if __name__ == '__main__':
