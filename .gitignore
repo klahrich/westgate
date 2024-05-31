@@ -11,3 +11,9 @@ notebooks/*.csv
 notebooks/*.xlsx
 refusal_model/*.csv
 refusal_model/*.xlsx
+default_model/*.csv
+default_model/*.xlsx
+refusal_model/*.dill
+default_model/*.dill
+default_model/*.png
+refusal_model/*.png

@@ -19,7 +19,8 @@ RUN pip install \
     colored==2.2.4 \
     plotly==5.18.0 \
     xgboost==2.0.3 \
-    supabase==2.4.3
+    supabase==2.4.3 \
+    dill==0.3.8
 
 # Expose the port the app runs on
 EXPOSE 8080

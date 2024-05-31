@@ -1,3 +1,4 @@
+from queue import Empty
 import uvicorn
 from fastapi import FastAPI
 from westgate.flaml_model import *
@@ -12,7 +13,7 @@ from supabase import create_client, Client
 # load_dotenv()
 
 app = FastAPI()
-model_refusal = load_model('refusal_0.3', basefolder='model_binaries/')
+model_refusal = load_model('refusal_0.4', basefolder='model_binaries/')
 model_default = load_model('default_1.0', basefolder='model_binaries/')
 
 SUPABASE_URL = os.environ['SUPABASE_URL']
@@ -94,53 +95,65 @@ def index():
 def predict_proba(data:LoanRequest, org='westgate'):
     data = data.dict()
     df = pd.DataFrame.from_dict([data])
-    pred_refusal = model_refusal.predict_proba(df, filter=True, engineer=True).item()
-    pred_default = model_default.predict_proba(df, filter=True, engineer=True).item()
 
-    percentiles_refusal = list(model_refusal.percentiles.keys())
-    percentiles_default = list(model_default.percentiles.keys())
+    try:
+        pred_refusal = model_refusal.predict_proba(df, filter=True, engineer=True).item()
+        pred_default = model_default.predict_proba(df, filter=True, engineer=True).item()
 
-    #refusal
+        percentiles_refusal = list(model_refusal.percentiles.keys())
+        percentiles_default = list(model_default.percentiles.keys())
 
-    idx_refusal = np.digitize(pred_refusal, list(model_refusal.percentiles.values()))
+        #refusal
 
-    if idx_refusal < len(percentiles_refusal):
-        percentile_refusal = list(model_refusal.percentiles.keys())[idx_refusal]
-    else:
-        percentile_refusal = 100
+        idx_refusal = np.digitize(pred_refusal, list(model_refusal.percentiles.values()))
 
-    #default
+        if idx_refusal < len(percentiles_refusal):
+            percentile_refusal = list(model_refusal.percentiles.keys())[idx_refusal]
+        else:
+            percentile_refusal = 100
 
-    idx_default = np.digitize(pred_default, list(model_default.percentiles.values()))
+        #default
 
-    if idx_default < len(percentiles_default):
-        percentile_default = list(model_default.percentiles.keys())[idx_default]
-    else:
-        percentile_default = 100
+        idx_default = np.digitize(pred_default, list(model_default.percentiles.values()))
 
-    # 80th percentile default 1.0: 0.4055162847042084
-    # 25th percentile refusal 0.2: 0.5865068435668945
+        if idx_default < len(percentiles_default):
+            percentile_default = list(model_default.percentiles.keys())[idx_default]
+        else:
+            percentile_default = 100
 
-    if (pred_refusal >= model_refusal.percentiles[15]) or \
-        (pred_default >= model_default.percentiles[85]):
-        uw_decision = 'refuse'
-    else:
-        uw_decision = 'accept'
+        # 80th percentile default 1.0: 0.4055162847042084
+        # 25th percentile refusal 0.2: 0.5865068435668945
 
-    supabase.table('logs').insert({
-        'refusal_score': pred_refusal,
-        'refusal_percentile': percentile_refusal,
-        'default_score': pred_default,
-        'default_percentile': percentile_default,
-        'organization': org,
-        'decision': uw_decision
-    }).execute()
+        if (pred_refusal >= model_refusal.percentiles[15]) or \
+            (pred_default >= model_default.percentiles[80]):
+            uw_decision = 'refuse'
+        else:
+            uw_decision = 'accept'
 
-    return {
-        'uw_decision': uw_decision,
-        'score': 0.5 * (pred_refusal + pred_default),
-        'percentile': 0.5 * (percentile_refusal + percentile_default)
-    }
+        supabase.table('logs').insert({
+            'refusal_score': pred_refusal,
+            'refusal_percentile': percentile_refusal,
+            'default_score': pred_default,
+            'default_percentile': percentile_default,
+            'organization': org,
+            'decision': uw_decision
+        }).execute()
+
+        return {
+            'uw_decision': uw_decision,
+            'score': 0.5 * (pred_refusal + pred_default),
+            'percentile': 0.5 * (percentile_refusal + percentile_default),
+            'info': []
+        }
+
+    except EmptyDataFrameException as e:
+        return {
+            'uw_decision': 'n/a',
+            'score': 'n/a',
+            'percentile': 'n/a',
+            'info': ['Empty dataframe after filtering',
+                    'Possible causes: minimum balance was too low']
+        }
 
     # return {
     #     'refusal':{

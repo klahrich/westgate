@@ -11,18 +11,26 @@ from pandas.api.types import is_string_dtype
 from dateutil.relativedelta import relativedelta
 from dateutil.parser import parse
 from datetime import date
-import pickle
 from colored import Fore, Back, Style
 from sklearn.ensemble._stacking import StackingClassifier
 from westgate.combochart import combo_chart
 from sklearn.model_selection import ShuffleSplit
+import logging
+import dill
+
 pd.set_option('mode.chained_assignment', None)
 locale.setlocale(locale.LC_ALL, '')
 
 
+# in the features.csv file, 
+# variables marked 'extra' are required for feature engineering and saved in features_in
+# variables mared 'optional' are optional and not saved in features_in
+# both are saved in the extra dict object
+
+
 def load_model(experiment_id:str, basefolder='./'):
-    with open(basefolder + experiment_id + '.pkl', 'rb') as f:
-        return pickle.load(f)
+    with open(basefolder + experiment_id + '.dill', 'rb') as f:
+        return dill.load(f)
 
 def precision1(y_pred, y_val):
     if (positives := (y_pred == 1).sum()) > 0:
@@ -44,6 +52,30 @@ def fscore(precision_1, recall_1, beta=1):
     else:
         return ((1+beta**2) * precision_1 * recall_1) / ((beta**2)*precision_1 + recall_1)
 
+def feature_engineer_basic(X: pd.DataFrame) -> pd.DataFrame:
+        
+        def time_diff(X):
+            request_date = X['request_date']
+            dob = X['dob']
+            try:
+                if type(request_date)==str:
+                    request_date = request_date[:10]
+                    request_date = parse(request_date)
+                if type(dob)==str:
+                    dob = dob[:10]
+                    dob = parse(dob)
+                return relativedelta(request_date, dob).years
+            except Exception as e:
+                print(f'Error calculating age with dob {dob} and request_date {request_date}')
+                print(e)
+        
+        assert 'dob' in X.columns
+        assert 'request_date' in X.columns
+
+        X['age'] = X[['request_date', 'dob']].apply(time_diff, axis=1)
+
+        return X
+
 class EmptyDataFrameException(Exception):
     pass
 
@@ -54,8 +86,11 @@ class LendingModel:
         self.log_file = basefolder + 'log_' + str(experiment_id) + '.log'
         self.feature_file = basefolder + 'features_' + str(experiment_id) + '.csv'
         self.features_df = self.read_feature_file()
+        #print(self.features_df.tail())
         self.features_in = self.set_features_in()
         self.features = None
+        self.feature_engs:List[Callable[[pd.DataFrame], pd.DataFrame]] = []
+        self.add_feature_eng(feature_engineer_basic)
         self.automl = None
         self.basefolder = basefolder
         self.model_file = self.basefolder + self.experiment_id
@@ -63,17 +98,19 @@ class LendingModel:
         self.percentiles = None
 
     def save(self):
-        with open(str(self.model_file) + '.pkl', 'wb') as f:
-            pickle.dump(self, f)
-
+        with open(str(self.model_file) + '.dill', 'wb') as file:
+            dill.dump(self, file)
+        
     def update_extra(self, extra, X_train, y_train, X_test, y_test) -> Dict:
         for f in list(self.extra_features):
             extra['train_' + f] = X_train[f]
             extra['test_' + f] = X_test[f]
 
         for f in list(self.optional_features):
-            extra['train_' + f] = X_train[f]
-            extra['test_' + f] = X_test[f]
+            if f in X_train.columns:
+                extra['train_' + f] = X_train[f]
+            if f in X_test.columns:
+                extra['test_' + f] = X_test[f]
 
         return extra
 
@@ -94,6 +131,9 @@ class LendingModel:
         self.optional_features = features_df.loc[features_df.type=='optional', 'variable']
 
         return features_df
+
+    def add_feature_eng(self, fe:Callable[[pd.DataFrame], pd.DataFrame]):
+        self.feature_engs.append(fe)
 
     def filter_df(self, original_df):
         df = original_df.copy()
@@ -146,7 +186,7 @@ class LendingModel:
         original_df = df.copy()
 
         extra = {}
- 
+
         df = df[[c for c in df.columns if c in list(self.features_df['variable'])]]
 
         # now do the splitting
@@ -196,33 +236,10 @@ class LendingModel:
                 (c not in list(self.extra_features))
                 and (c not in list(self.optional_features))]
 
-    def _feature_engineer(self, X: pd.DataFrame) -> pd.DataFrame:
-
-        def time_diff(X):
-            request_date = X['request_date']
-            dob = X['dob']
-            try:
-                if type(request_date)==str:
-                    request_date = request_date[:10]
-                    request_date = parse(request_date)
-                if type(dob)==str:
-                    dob = dob[:10]
-                    dob = parse(dob)
-                return relativedelta(request_date, dob).years
-            except Exception as e:
-                print(f'Error calculating age with dob {dob} and request_date {request_date}')
-                print(e)
-        
-        assert 'dob' in X.columns
-        assert 'request_date' in X.columns
-
-        X['age'] = X[['request_date', 'dob']].apply(time_diff, axis=1)
-
-        return X
-
     def feature_engineer(self, X_train, X_test=None):
 
-        X_train = self._feature_engineer(X_train)
+        for fe in self.feature_engs:
+            X_train = fe(X_train)
 
         if self.features is None:
             self.features = self.set_features(X_train)
@@ -230,20 +247,24 @@ class LendingModel:
         X_train = X_train[self.features]
 
         if X_test is not None:
-            X_test = self._feature_engineer(X_test)
+            for fe in self.feature_engs:
+                X_test = fe(X_test)
+
             X_test = X_test[self.features]
             return X_train, X_test
 
         return X_train
 
+
     def fit(self, X_train, y_train, X_test=None, y_test=None, extra={}, 
             time_budget=10, automl_config={}, show_stats=True, 
             show_plots=True, save_test=True, save_model=True,
             threshold=None, percentile=None):
+        
+        logger = logging.getLogger(__name__)
 
-        print('X_train shape: ' + str(X_train.shape))
-        print('X_test shape: ' + str(X_test.shape))
-        print()
+        logger.info('X_train shape: ' + str(X_train.shape))
+        logger.info('X_test shape: ' + str(X_test.shape))
 
         automl_settings = {
             "time_budget": time_budget,  # in seconds
@@ -283,41 +304,41 @@ class LendingModel:
             y_pred = np.where(y_pred_proba >= threshold, 1, 0)
     
             if show_stats:
-                print('Actual ' + self.ylabel + '[TEST]:')
-                print(str(y_test.sum()) + ' (' + str(round(y_test.sum() / y_test.size * 100, 1)) + '%)') 
+                logger.info('Actual ' + self.ylabel + '[TEST]:')
+                logger.info(str(y_test.sum()) + ' (' + str(round(y_test.sum() / y_test.size * 100, 1)) + '%)') 
 
-                print('Predicted ' + self.ylabel + '[TEST]:')
-                print(str(y_pred.sum()) + ' (' + str(round(y_pred.sum() / y_pred.size * 100, 1)) + '%)') 
+                logger.info('Predicted ' + self.ylabel + '[TEST]:')
+                logger.info(str(y_pred.sum()) + ' (' + str(round(y_pred.sum() / y_pred.size * 100, 1)) + '%)') 
 
                 y_pred_proba_df = pd.DataFrame({'y_pred_test': y_pred_proba})
                 y_pred_proba_df.plot.hist()
 
                 y_pred_proba_bins = pd.cut(y_pred_proba, 10, duplicates = 'drop')
-                print('\ny_pred_proba distribution:')
-                print(y_pred_proba_bins.value_counts())
+                logger.info('\ny_pred_proba distribution:')
+                logger.info(y_pred_proba_bins.value_counts())
 
-                print('\nBest validation loss: ' + str(automl.best_loss))
+                logger.info('\nBest validation loss: ' + str(automl.best_loss))
 
-                print('\n')
-                print(classification_report(y_test, y_pred))
+                logger.info('\n')
+                logger.info(classification_report(y_test, y_pred))
 
-                print('Confusion matrix:')
-                print(confusion_matrix(y_test, y_pred))
-                print('\n')
+                logger.info('Confusion matrix:')
+                logger.info(confusion_matrix(y_test, y_pred))
+                logger.info('\n')
                 
-                print('Normalized confusion matrix:\n')
+                logger.info('Normalized confusion matrix:\n')
 
-                print('By true:')
-                print(confusion_matrix(y_test, y_pred, normalize='true'))
-                print('\n')
+                logger.info('By true:')
+                logger.info(confusion_matrix(y_test, y_pred, normalize='true'))
+                logger.info('\n')
 
-                print('By pred:')
-                print(confusion_matrix(y_test, y_pred, normalize='pred'))
-                print('\n')
+                logger.info('By pred:')
+                logger.info(confusion_matrix(y_test, y_pred, normalize='pred'))
+                logger.info('\n')
                 
-                print('By all:')
-                print(confusion_matrix(y_test, y_pred, normalize='all'))
-                print('\n')
+                logger.info('By all:')
+                logger.info(confusion_matrix(y_test, y_pred, normalize='all'))
+                logger.info('\n')
 
             #print('Best model: ')
             #print(automl.model.estimator)
