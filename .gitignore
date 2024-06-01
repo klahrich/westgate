@@ -9,11 +9,9 @@ default_model/*.pkl
 model_binaries/
 notebooks/*.csv
 notebooks/*.xlsx
-refusal_model/*.csv
 refusal_model/*.xlsx
-default_model/*.csv
+refusal_model/cases_to_investigate.csv
+X_test*.csv
 default_model/*.xlsx
 refusal_model/*.dill
 default_model/*.dill
-default_model/*.png
-refusal_model/*.png

@@ -28,8 +28,8 @@ locale.setlocale(locale.LC_ALL, '')
 # both are saved in the extra dict object
 
 
-def load_model(experiment_id:str, basefolder='./'):
-    with open(basefolder + experiment_id + '.dill', 'rb') as f:
+def load_model(model_name:str, basefolder='./'):
+    with open(basefolder + model_name + '_model.dill', 'rb') as f:
         return dill.load(f)
 
 def precision1(y_pred, y_val):
@@ -81,24 +81,23 @@ class EmptyDataFrameException(Exception):
 
 class LendingModel:
 
-    def __init__(self, experiment_id:str, basefolder='./', ylabel=''):
-        self.experiment_id = experiment_id
-        self.log_file = basefolder + 'log_' + str(experiment_id) + '.log'
-        self.feature_file = basefolder + 'features_' + str(experiment_id) + '.csv'
+    def __init__(self, model_name:str, model_version:str, basefolder='./', ylabel=''):
+        self.model_name = model_name
+        self.model_version = model_version
+        self.log_file = basefolder + 'log_' + self.model_name + '.log'
+        self.feature_file = basefolder + 'features_' + self.model_name + '.csv'
         self.features_df = self.read_feature_file()
-        #print(self.features_df.tail())
         self.features_in = self.set_features_in()
         self.features = None
         self.feature_engs:List[Callable[[pd.DataFrame], pd.DataFrame]] = []
         self.add_feature_eng(feature_engineer_basic)
         self.automl = None
         self.basefolder = basefolder
-        self.model_file = self.basefolder + self.experiment_id
         self.ylabel = ylabel
         self.percentiles = None
 
     def save(self):
-        with open(str(self.model_file) + '.dill', 'wb') as file:
+        with open(str(self.model_name) + '_model.dill', 'wb') as file:
             dill.dump(self, file)
         
     def update_extra(self, extra, X_train, y_train, X_test, y_test) -> Dict:
@@ -263,6 +262,10 @@ class LendingModel:
         
         logger = logging.getLogger(__name__)
 
+        logger.info('Model: ' + self.model_name)
+        logger.info('Model version: ' + self.model_version)
+        logger.info('---\n')
+
         logger.info('X_train shape: ' + str(X_train.shape))
         logger.info('X_test shape: ' + str(X_test.shape))
 
@@ -353,8 +356,8 @@ class LendingModel:
                     if k.startswith('test_'):
                         X_test_df[k] = v.reset_index(drop=True)
 
-                print('Saving ' + 'X_test-' + self.experiment_id + '.csv')
-                X_test_df.to_csv(self.basefolder + 'X_test-' + self.experiment_id + '.csv', index=False)
+                print('Saving ' + 'X_test_' + self.model_name + '.csv')
+                X_test_df.to_csv(self.basefolder + 'X_test_' + self.model_name + '.csv', index=False)
 
             return y_pred_proba, y_pred, None
 
@@ -365,7 +368,7 @@ class LendingModel:
         plt.xlabel("Wall Clock Time (s)")
         plt.ylabel("Validation Accuracy")
         plt.step(time_history, 1 - np.array(best_valid_loss_history), where="post")
-        plt.savefig('learning_plot_' + self.experiment_id + '.png')
+        plt.savefig('learning_plot_' + self.model_name + '.png')
         plt.show()
 
     def feat_imp(self):
@@ -393,12 +396,13 @@ class LendingModel:
 class UWModel(LendingModel):
 
     def __init__(self, 
-                experiment_id:str, 
+                model_name:str, 
+                model_version:str,
                 default:int=1, 
                 repay:int=0, 
                 basefolder='./',
                 ylabel='Default'):
-        super().__init__(experiment_id, basefolder, ylabel)
+        super().__init__(model_name, model_version, basefolder, ylabel)
         self.default = default
         self.repay = repay
 
@@ -548,7 +552,7 @@ class UWModel(LendingModel):
             if show_plots:
                 perf_df = pd.DataFrame({'y_pred': y_pred_proba, 'y_test': y_test, 'profit_test': extra['test_profit']})
                 combo_chart(perf_df, xvar='y_pred', q=10, yvar='profit_test', 
-                            savefile='perf_' + self.experiment_id + '.png')
+                            savefile='perf_' + self.model_name + '.png')
 
             return y_pred_proba, y_pred, extra
 
@@ -556,106 +560,4 @@ class UWModel(LendingModel):
             super().fit(X_train, X_test, y_train, y_test, extra, 
                         time_budget, automl_config, show_stats, 
                         show_plots, save_test, save_model, threshold, percentile)
-
-
-# class RefusalModel(LendingModel):
-
-#     def __init__(self, experiment_id:str, threshold:float = 0.5):
-#         super().__init__(experiment_id, threshold)
-
-#     def y1_label(self) -> str:
-#         return 'Refused File(s)'
-
-#     def non_features(self):
-#         return super().non_features()
-
-#     def filter_df(self, original_df):
-#         return super().filter_df(original_df)
-
-#     def update_extra(self, extra, X_train, y_train, X_test, y_test) -> Dict:
-#         return super().update_extra(extra, X_train, y_train, X_test, y_test)
-
-#     def feature_engineer(self, df: pd.DataFrame) -> pd.DataFrame:
-
-#         df['sum_employer_income_90d'] = (
-#             df['sum_employer_income_current_month'] + 
-#             df['sum_employer_income_previous_month'] + 
-#             df['sum_employer_income_2_months_ago']
-#         )
-        
-#         df['sum_micro_loan_payments_90d'] = (
-#             df['sum_micro_loan_payments_current_month'] + 
-#             df['sum_micro_loan_payments_previous_month'] + 
-#             df['sum_micro_loan_payments_2_months_ago']
-#         )
-
-#         df['sum_loan_payments_90d'] = (
-#             df['sum_loan_payments_current_month'] + 
-#             df['sum_loan_payments_previous_month'] + 
-#             df['sum_loan_payments_2_months_ago']
-#         )
-
-#         df['sum_total_income_90d'] = (
-#             df['sum_total_income_current_month'] + 
-#             df['sum_total_income_previous_month'] + 
-#             df['sum_total_income_2_months_ago']
-#         )
-
-#         df['micro_loans_debt_ratio_current_month'] = np.divide(
-#                 df['sum_micro_loan_payments_current_month'],
-#                 df['sum_employer_income_current_month'],
-#                 out=np.zeros_like(df.iloc[:, 1]),
-#                 where=(df['sum_employer_income_current_month'] != 0)
-#         )
-
-#         df['micro_loans_debt_ratio_previous_month'] = np.divide(
-#             df['sum_micro_loan_payments_previous_month'],
-#             df['sum_employer_income_previous_month'],
-#             out=np.zeros_like(df.iloc[:, 1]),
-#             where=(df['sum_employer_income_previous_month'] != 0)
-#         )
-
-#         df['micro_loans_debt_ratio_2_months_ago'] = np.divide(
-#             df['sum_micro_loan_payments_2_months_ago'],
-#             df['sum_employer_income_2_months_ago'],
-#             out=np.zeros_like(df.iloc[:, 1]),
-#             where=(df['sum_employer_income_2_months_ago'] != 0)
-#         )
-
-#         df['micro_loans_debt_ratio_90d'] = np.divide(
-#             df['sum_micro_loan_payments_90d'],
-#             df['sum_total_income_90d'],
-#             out=np.zeros_like(df.iloc[:, 1]),
-#             where=(df['sum_total_income_90d'] != 0)
-#         )
-        
-#         return df
-
-
-# class CombinedModel:
-
-#     def __init__(self, default_model:UWModel, default_threshold_low:float, default_threshold_high:float,
-#                        refusal_model:UWModel, refusal_threshold:float):
-#         self.default_model = default_model
-#         self.refusal_model = refusal_model
-#         self.default_threshold_low = default_threshold_low
-#         self.default_threshold_high = default_threshold_high
-#         self.refusal_threshold = refusal_threshold
-
-#     def refuse(self, X_test):
-#         refusal_proba = self.refusal_model.predict_proba(X_test)
-#         default_proba = self.default_model.predict_proba(X_test)
-
-#         if refusal_proba > self.refusal_threshold: # predicted refusal
-#             if default_proba >= self.default_threshold_low: # default proba not extremely low
-#                 return True, 'both models aligned'
-#             else:
-#                 return False, 'predicted refusal but low default probability'
-#         else: # predicted accepted
-#             if default_proba > self.default_threshold_high: # default proba extremely high
-#                 return True, 'predicted acceptance but high default probability'
-#             else:
-#                 return 'both models aligned'
-
-
 
