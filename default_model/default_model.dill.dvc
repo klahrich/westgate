@@ -1,0 +1,5 @@
+outs:
+- md5: b5b976510e2cbdfbe23357aee53ed5e3
+  size: 8562217
+  hash: md5
+  path: default_model.dill
