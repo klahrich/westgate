@@ -208,6 +208,7 @@ class LendingModelTrainer:
             return y_pred_proba, y_pred, None
 
     def retrain_full(self, Xfull, yfull, weight_full=None, time_budget=60):
+
         self.model_core.automl.retrain_from_log(
             self.log_file,
             Xfull,

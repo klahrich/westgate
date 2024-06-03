@@ -28,7 +28,7 @@ locale.setlocale(locale.LC_ALL, '')
 # variables mared 'optional' are optional and not saved in features_in
 # both are saved in the extra dict object
 
-class LendingModelCore:
+class LendingModelBasic:
 
     def __init__(self, feature_file:str):
         self.features_df = self.read_feature_file(feature_file)
@@ -80,9 +80,9 @@ class LendingModelCore:
 
     def filter_df(self, original_df):
 
-        bfr = len(original_df)
-
         df = original_df.copy()
+
+        bfr = len(df)
 
         for r in self.thresholds_min:
             df = df[~(df[r['variable']] < r['threshold_min'])]
@@ -153,10 +153,33 @@ class LendingModelCore:
         preds = self.automl.predict(df[self.features].to_numpy())
         return pd.DataFrame({'pred': preds}).set_index(df.index)
 
+    def _feature_engineer(self, X):
+        
+        def time_diff(X):
+            request_date = X['request_date']
+            dob = X['dob']
+            try:
+                if type(request_date)==str:
+                    request_date = request_date[:10]
+                    request_date = parse(request_date)
+                if type(dob)==str:
+                    dob = dob[:10]
+                    dob = parse(dob)
+                return relativedelta(request_date, dob).years
+            except Exception as e:
+                print(f'Error calculating age with dob {dob} and request_date {request_date}')
+                print(e)
+        
+        assert 'dob' in X.columns
+        assert 'request_date' in X.columns
+
+        X['age'] = X[['request_date', 'dob']].apply(time_diff, axis=1)
+
+        return X
+
     def feature_engineer(self, X_train, X_test=None):
 
-        for fe in self.feature_engs:
-            X_train = fe(X_train)
+        X_train = self._feature_engineer(X_train)
 
         if self.features is None:
             self.features = self.set_features(X_train)
@@ -164,8 +187,7 @@ class LendingModelCore:
         X_train = X_train[self.features]
 
         if X_test is not None:
-            for fe in self.feature_engs:
-                X_test = fe(X_test)
+            X_test = self._feature_engineer(X_test)
 
             X_test = X_test[self.features]
             return X_train, X_test
@@ -192,3 +214,28 @@ class LendingModelCore:
                 'variable': self.automl.model.estimator.feature_names_in_,
                 'imp': self.automl.model.estimator.feature_importances_
             }).sort_values('imp', ascending=False)
+
+
+class LendingModel(LendingModelBasic):
+    
+    def __init__(self, feature_file:str):
+        super().__init__(feature_file)
+
+    
+    def _feature_engineer(self, X):
+        X = super()._feature_engineer(X)
+
+        X['non_classified_income_current_month'] = (X['sum_non_employer_income_current_month']
+                                                - X['sum_government_income_current_month'])
+
+        X['non_classified_income_previous_month'] = (X['sum_non_employer_income_previous_month']
+                                                    - X['sum_government_income_previous_month'])
+
+        X['non_classified_income_2_months_ago'] = (X['sum_non_employer_income_2_months_ago']
+                                                    - X['sum_government_income_2_months_ago'])
+
+        X['monthly_repayment_capacity'] = (X['sum_employer_income_current_month']
+                                            - X['sum_loan_deposits_90_days'] / 3.0)
+
+        return X
+
