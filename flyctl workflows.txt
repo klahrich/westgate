@@ -1,0 +1,116 @@
+source: https://community.fly.io/t/managing-multiple-environments/107/31
+
+For anyone that looking the answer in 2024, here is how I managed multiple environments:
+
+Step 1: Create two deploy tokens:
+
+(one for development workflow and one for production workflow)
+
+flyctl tokens create deploy -a my-app-dev
+
+and copy the token and go to github, settings → secrets and variables → create new secret named FLY_API_TOKEN_DEV and copy the token into the secret.
+
+flyctl tokens create deploy -a my-app-prod
+
+do the same this time create a variable called FLY_API_TOKEN_PROD
+
+Step 2: Create two Github workflows one for each environment
+
+.github/worflows/development.yaml:
+
+---
+name: Deploy to development
+on:
+  push:
+    branches:
+      - dev
+env:
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+jobs:
+  deploy:
+    name: Deploy Development App
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy -a my-app-dev --remote-only
+---
+
+.github/worflows/production.yaml:
+
+---
+name: Fly Deploy
+on:
+  push:
+    branches:
+      - master
+env:
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_PROD }}
+jobs:
+  deploy:
+    name: Deploy app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy -a hawalla-backend-prod --remote-only
+---
+
+Step 3: Create two .toml files
+
+fly.dev.toml:
+
+---
+[build]
+.
+.
+
+[env]
+.
+.
+
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 1024
+
+[deploy]
+release_command = "php artisan migrate --force"
+---
+
+fly.prod.toml:
+
+---
+[build]
+  [build.args]
+
+[deploy]
+  release_command = 'php artisan migrate --force'
+
+[env]
+.
+.
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  size = 'performance-1x'
+  memory = '4gb'
+  cpu_kind = 'performance'
+  cpus = 1
+---
