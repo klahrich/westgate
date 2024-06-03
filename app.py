@@ -13,8 +13,8 @@ from supabase import create_client, Client
 # load_dotenv()
 
 app = FastAPI()
-model_refusal = load_model('refusal_0.4', basefolder='model_binaries/')
-model_default = load_model('default_1.0', basefolder='model_binaries/')
+model_refusal = load_model('refusal', basefolder='model_binaries/')
+model_default = load_model('default', basefolder='model_binaries/')
 
 SUPABASE_URL = os.environ['SUPABASE_URL']
 SUPABASE_KEY = os.environ['SUPABASE_KEY']
@@ -125,7 +125,7 @@ def predict_proba(data:LoanRequest, org='westgate'):
         # 25th percentile refusal 0.2: 0.5865068435668945
 
         if (pred_refusal >= model_refusal.percentiles[15]) or \
-            (pred_default >= model_default.percentiles[80]):
+            (pred_default >= model_default.percentiles[75]):
             uw_decision = 'refuse'
         else:
             uw_decision = 'accept'

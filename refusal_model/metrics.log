@@ -1,0 +1,59 @@
+Model: refusal
+Model: refusal
+Model version: 0.4
+---
+
+X_train shape: (82726, 39)
+X_test shape: (14601, 39)
+Actual Refusal[TEST]:
+11824 (81.0%)
+Predicted Refusal[TEST]:
+12719 (87.1%)
+
+y_pred_proba distribution:
+(-0.000999, 0.1]     400
+(0.1, 0.2]           342
+(0.2, 0.3]           277
+(0.3, 0.4]           273
+(0.4, 0.5]           365
+(0.5, 0.6]           456
+(0.6, 0.7]           730
+(0.7, 0.8]           995
+(0.8, 0.9]          1813
+(0.9, 1.0]          8950
+Name: count, dtype: int64
+
+Best validation loss: 0.16234773826665239
+
+
+              precision    recall  f1-score   support
+
+           0       0.65      0.44      0.52      2777
+           1       0.88      0.94      0.91     11824
+
+    accuracy                           0.85     14601
+   macro avg       0.76      0.69      0.72     14601
+weighted avg       0.83      0.85      0.84     14601
+
+Confusion matrix:
+[[ 1216  1561]
+ [  666 11158]]
+
+
+Normalized confusion matrix:
+
+By true:
+[[0.43788261 0.56211739]
+ [0.05632612 0.94367388]]
+
+
+By pred:
+[[0.64612115 0.12272977]
+ [0.35387885 0.87727023]]
+
+
+By all:
+[[0.08328197 0.10691049]
+ [0.04561331 0.76419423]]
+
+

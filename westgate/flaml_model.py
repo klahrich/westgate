@@ -52,34 +52,11 @@ def fscore(precision_1, recall_1, beta=1):
     else:
         return ((1+beta**2) * precision_1 * recall_1) / ((beta**2)*precision_1 + recall_1)
 
-def feature_engineer_basic(X: pd.DataFrame) -> pd.DataFrame:
-        
-        def time_diff(X):
-            request_date = X['request_date']
-            dob = X['dob']
-            try:
-                if type(request_date)==str:
-                    request_date = request_date[:10]
-                    request_date = parse(request_date)
-                if type(dob)==str:
-                    dob = dob[:10]
-                    dob = parse(dob)
-                return relativedelta(request_date, dob).years
-            except Exception as e:
-                print(f'Error calculating age with dob {dob} and request_date {request_date}')
-                print(e)
-        
-        assert 'dob' in X.columns
-        assert 'request_date' in X.columns
-
-        X['age'] = X[['request_date', 'dob']].apply(time_diff, axis=1)
-
-        return X
 
 class EmptyDataFrameException(Exception):
     pass
 
-class LendingModel:
+class LendingModelBase:
 
     def __init__(self, model_name:str, model_version:str, basefolder='./', ylabel=''):
         self.model_name = model_name
@@ -89,8 +66,6 @@ class LendingModel:
         self.features_df = self.read_feature_file()
         self.features_in = self.set_features_in()
         self.features = None
-        self.feature_engs:List[Callable[[pd.DataFrame], pd.DataFrame]] = []
-        self.add_feature_eng(feature_engineer_basic)
         self.automl = None
         self.basefolder = basefolder
         self.ylabel = ylabel
@@ -130,9 +105,6 @@ class LendingModel:
         self.optional_features = features_df.loc[features_df.type=='optional', 'variable']
 
         return features_df
-
-    def add_feature_eng(self, fe:Callable[[pd.DataFrame], pd.DataFrame]):
-        self.feature_engs.append(fe)
 
     def filter_df(self, original_df):
         df = original_df.copy()
@@ -235,10 +207,33 @@ class LendingModel:
                 (c not in list(self.extra_features))
                 and (c not in list(self.optional_features))]
 
+    def _feature_engineer(self, X: pd.DataFrame) -> pd.DataFrame:
+        
+        def time_diff(X):
+            request_date = X['request_date']
+            dob = X['dob']
+            try:
+                if type(request_date)==str:
+                    request_date = request_date[:10]
+                    request_date = parse(request_date)
+                if type(dob)==str:
+                    dob = dob[:10]
+                    dob = parse(dob)
+                return relativedelta(request_date, dob).years
+            except Exception as e:
+                print(f'Error calculating age with dob {dob} and request_date {request_date}')
+                print(e)
+        
+        assert 'dob' in X.columns
+        assert 'request_date' in X.columns
+
+        X['age'] = X[['request_date', 'dob']].apply(time_diff, axis=1)
+
+        return X
+
     def feature_engineer(self, X_train, X_test=None):
 
-        for fe in self.feature_engs:
-            X_train = fe(X_train)
+        X_train = self._feature_engineer(X_train)
 
         if self.features is None:
             self.features = self.set_features(X_train)
@@ -246,8 +241,7 @@ class LendingModel:
         X_train = X_train[self.features]
 
         if X_test is not None:
-            for fe in self.feature_engs:
-                X_test = fe(X_test)
+            X_test = self._feature_engineer(X_test)
 
             X_test = X_test[self.features]
             return X_train, X_test
@@ -393,7 +387,34 @@ class LendingModel:
             }).sort_values('imp', ascending=False)
 
 
-class UWModel(LendingModel):
+# Refusal model with more feature engineering
+class LendingModel(LendingModelBase):
+
+    def __init__(self, 
+                model_name:str, 
+                model_version:str,
+                basefolder='./',
+                ylabel='Refusal'):
+        super().__init__(model_name, model_version, basefolder, ylabel)
+        
+    def _feature_engineer(self, X: pd.DataFrame) -> pd.DataFrame:
+        X = super()._feature_engineer(X)
+        X['non_classified_income_current_month'] = (X['sum_non_employer_income_current_month']
+                                                - X['sum_government_income_current_month'])
+
+        X['non_classified_income_previous_month'] = (X['sum_non_employer_income_previous_month']
+                                                    - X['sum_government_income_previous_month'])
+
+        X['non_classified_income_2_months_ago'] = (X['sum_non_employer_income_2_months_ago']
+                                                    - X['sum_government_income_2_months_ago'])
+
+        X['monthly_repayment_capacity'] = (X['sum_employer_income_current_month']
+                                            - X['sum_loan_deposits_90_days'] / 3.0)
+
+        return X
+
+
+class UWModel(LendingModelBase):
 
     def __init__(self, 
                 model_name:str, 
