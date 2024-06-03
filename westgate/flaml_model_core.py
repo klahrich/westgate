@@ -6,16 +6,12 @@ from typing import Dict, List, Callable
 from sklearn.metrics import classification_report, confusion_matrix
 import locale
 from flaml.automl.data import get_output_from_log
-import matplotlib.pyplot as plt
 from pandas.api.types import is_string_dtype
 from dateutil.relativedelta import relativedelta
 from dateutil.parser import parse
-from datetime import date
-from colored import Fore, Back, Style
 from sklearn.ensemble._stacking import StackingClassifier
 from westgate.combochart import combo_chart
 from westgate.flaml_model_utils import load_model, feature_engineer_basic, EmptyDataFrameException
-from sklearn.model_selection import ShuffleSplit
 import logging
 import dill
 
@@ -28,20 +24,21 @@ locale.setlocale(locale.LC_ALL, '')
 # variables mared 'optional' are optional and not saved in features_in
 # both are saved in the extra dict object
 
-class LendingModelBasic:
+class LendingModelCore:
 
-    def __init__(self, feature_file:str):
-        self.features_df = self.read_feature_file(feature_file)
-        self.features_in = self.set_features_in()
+    def __init__(self):
+        self.features_file = None
         self.automl = None
         self.features_in = None
         self.features = None
-        self.feature_engs:List[Callable[[pd.DataFrame], pd.DataFrame]] = []
-        self.add_feature_eng(feature_engineer_basic)
         self.thresholds_min = None
         self.thresholds_max = None
         self.percentiles = None
 
+    def set_features_file(self, features_file:str):
+        self.features_file = features_file
+        self.features_df = self.read_feature_file(self.features_file)
+        self.features_in = self.set_features_in()
     
     def read_feature_file(self, feature_file:str):
         features_df = pd.read_csv(feature_file)
@@ -175,6 +172,18 @@ class LendingModelBasic:
 
         X['age'] = X[['request_date', 'dob']].apply(time_diff, axis=1)
 
+        X['non_classified_income_current_month'] = (X['sum_non_employer_income_current_month']
+                                                - X['sum_government_income_current_month'])
+
+        X['non_classified_income_previous_month'] = (X['sum_non_employer_income_previous_month']
+                                                    - X['sum_government_income_previous_month'])
+
+        X['non_classified_income_2_months_ago'] = (X['sum_non_employer_income_2_months_ago']
+                                                    - X['sum_government_income_2_months_ago'])
+
+        X['monthly_repayment_capacity'] = (X['sum_employer_income_current_month']
+                                            - X['sum_loan_deposits_90_days'] / 3.0)
+
         return X
 
     def feature_engineer(self, X_train, X_test=None):
@@ -216,26 +225,27 @@ class LendingModelBasic:
             }).sort_values('imp', ascending=False)
 
 
-class LendingModel(LendingModelBasic):
+class LendingModel(LendingModelCore):
     
-    def __init__(self, feature_file:str):
-        super().__init__(feature_file)
+    def __init__(self):
+        super().__init__()
 
     
     def _feature_engineer(self, X):
         X = super()._feature_engineer(X)
 
-        X['non_classified_income_current_month'] = (X['sum_non_employer_income_current_month']
-                                                - X['sum_government_income_current_month'])
+        return X
 
-        X['non_classified_income_previous_month'] = (X['sum_non_employer_income_previous_month']
-                                                    - X['sum_government_income_previous_month'])
 
-        X['non_classified_income_2_months_ago'] = (X['sum_non_employer_income_2_months_ago']
-                                                    - X['sum_government_income_2_months_ago'])
 
-        X['monthly_repayment_capacity'] = (X['sum_employer_income_current_month']
-                                            - X['sum_loan_deposits_90_days'] / 3.0)
+class UWModel(LendingModelCore):
+    
+    def __init__(self):
+        super().__init__()
+
+    
+    def _feature_engineer(self, X):
+        X = super()._feature_engineer(X)
 
         return X
 

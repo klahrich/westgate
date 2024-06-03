@@ -8,11 +8,8 @@ import locale
 from flaml.automl.data import get_output_from_log
 import matplotlib.pyplot as plt
 from pandas.api.types import is_string_dtype
-from dateutil.relativedelta import relativedelta
 from dateutil.parser import parse
-from datetime import date
 from colored import Fore, Back, Style
-from sklearn.ensemble._stacking import StackingClassifier
 from westgate.combochart import combo_chart
 from westgate.flaml_model_core import LendingModelCore
 from sklearn.model_selection import ShuffleSplit
@@ -30,14 +27,20 @@ locale.setlocale(locale.LC_ALL, '')
 
 class LendingModelTrainer:
 
-    def __init__(self, model_name:str, model_version:str, basefolder='./', ylabel=''):
+    def __init__(self, 
+                 model_name:str, 
+                 model_core:LendingModelCore, 
+                 model_version:str, 
+                 basefolder='./', 
+                 ylabel=''):
         self.model_name = model_name
-        self.model_version = model_version
+        self.model_core = model_core
+        self.features_file = basefolder + 'features_' + self.model_name + '.csv'
+        self.model_core.set_features_file(self.features_file)
+        self.model_version = str(model_version)
         self.log_file = basefolder + 'log_' + self.model_name + '.log'
-        self.feature_file = basefolder + 'features_' + self.model_name + '.csv'
         self.basefolder = basefolder
         self.ylabel = ylabel
-        self.model_core:LendingModelCore = LendingModelCore(self.feature_file)
         
     def update_extra(self, extra, X_train, y_train, X_test, y_test) -> Dict:
         for f in list(self.extra_features):
@@ -61,10 +64,10 @@ class LendingModelTrainer:
 
         extra = {}
 
-        df = df[[c for c in df.columns if c in list(self.features_df['variable'])]]
+        df = df[[c for c in df.columns if c in list(self.model_core.features_df['variable'])]]
 
         # now do the splitting
-        target = self.target
+        target = self.model_core.target
         X = df[[c for c in df.columns if c != target]]
         y = df[target]
 
@@ -208,16 +211,19 @@ class LendingModelTrainer:
             return y_pred_proba, y_pred, None
 
     def retrain_full(self, Xfull, yfull, weight_full=None, time_budget=60):
-
         self.model_core.automl.retrain_from_log(
             self.log_file,
             Xfull,
             yfull,
+            sample_weight=weight_full,
+            time_budget=time_budget,
             train_best=True,
             train_full=True,
-            sample_weight=weight_full,
-            time_budget=time_budget
         )
+        preds_full = self.model_core.predict_proba(Xfull, filter=False, engineer=False)
+        percentiles = np.percentile(preds_full['pred_proba'], range(5,100,5))
+        self.model_core.percentiles = {p:v for p,v in zip(range(5,100,5), percentiles)}
+        self.model_core.save()
 
     def plot_learning_curve(self, time_budget):
         time_history, best_valid_loss_history, _, _, _ = get_output_from_log(filename=self.log_file,
@@ -237,12 +243,13 @@ class UWModelTrainer(LendingModelTrainer):
 
     def __init__(self, 
                 model_name:str, 
+                model_core:LendingModelCore,
                 model_version:str,
                 default:int=1, 
                 repay:int=0, 
                 basefolder='./',
                 ylabel='Default'):
-        super().__init__(model_name, model_version, basefolder, ylabel)
+        super().__init__(model_name, model_core, model_version, basefolder, ylabel)
         self.default = default
         self.repay = repay
 
