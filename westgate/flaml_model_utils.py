@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from flaml import AutoML
 #from flaml.automl.ml import norm_confusion_matrix
-from typing import Dict, List, Callable
+from typing import Dict, List
 from sklearn.metrics import classification_report, confusion_matrix
 import locale
 from flaml.automl.data import get_output_from_log
@@ -10,12 +10,7 @@ import matplotlib.pyplot as plt
 from pandas.api.types import is_string_dtype
 from dateutil.relativedelta import relativedelta
 from dateutil.parser import parse
-from datetime import date
-from colored import Fore, Back, Style
-from sklearn.ensemble._stacking import StackingClassifier
 from westgate.combochart import combo_chart
-from sklearn.model_selection import ShuffleSplit
-import logging
 import dill
 
 pd.set_option('mode.chained_assignment', None)
