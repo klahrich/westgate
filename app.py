@@ -124,8 +124,8 @@ def predict_proba(data:LoanRequest, org='westgate'):
         # 80th percentile default 1.0: 0.4055162847042084
         # 25th percentile refusal 0.2: 0.5865068435668945
 
-        if (pred_refusal >= model_refusal.percentiles[15]) or \
-            (pred_default >= model_default.percentiles[75]):
+        if (pred_refusal >= model_refusal.percentiles[20]) or \
+            (pred_default >= model_default.percentiles[80]):
             uw_decision = 'refuse'
         else:
             uw_decision = 'accept'
@@ -149,8 +149,8 @@ def predict_proba(data:LoanRequest, org='westgate'):
     except EmptyDataFrameException as e:
         return {
             'uw_decision': 'n/a',
-            'score': 'n/a',
-            'percentile': 'n/a',
+            'score': 0,
+            'percentile': 0,
             'info': ['Empty dataframe after filtering',
                     'Possible causes: minimum balance was too low']
         }
