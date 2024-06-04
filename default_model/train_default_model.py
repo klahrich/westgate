@@ -26,7 +26,7 @@ default_model = UWModel()
 default_model_trainer = UWModelTrainer(model_name='default', 
                                         model_core=default_model, 
                                         model_version='1.0',
-                                        basefolder='default_model/')
+                                        basefolder='./')
 
 # %%
 data_2022_df = pd.read_csv(basefolder + 'loan_outcomes_2022.csv', encoding='latin')
