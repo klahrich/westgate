@@ -113,7 +113,7 @@ class LendingModelTrainer:
             show_plots=True, save_test=False, 
             threshold=None, percentile=None):
         
-        logger = logging.getLogger(__name__)
+        logger = logging.getLogger('westgate.flaml_model_trainer')
 
         logger.info('Model: ' + self.model_name)
         logger.info('Model version: ' + self.model_version)
@@ -139,6 +139,7 @@ class LendingModelTrainer:
 
         automl = AutoML()
 
+        logger.info('Model training started...')
         np.random.seed(123)
         automl.fit(X_train, y_train, **automl_settings)
 
@@ -149,7 +150,7 @@ class LendingModelTrainer:
             if show_plots:
                 self.plot_learning_curve(time_budget)
                 live.log_image(self.model_name + '_learning_plot.png',
-                               self.model_name + '_learning_plot.png')
+                               self.basefolder + self.model_name + '_learning_plot.png')
 
             if X_test is not None:
 
@@ -178,7 +179,7 @@ class LendingModelTrainer:
                     logger.info(y_pred_proba_bins.value_counts())
 
                     logger.info('\nBest validation loss: ' + str(automl.best_loss))
-                    live.log_metric('validation_lodd', automl.best_loss)
+                    live.log_metric(self.model_name + '_validation_loss', automl.best_loss)
 
                     logger.info('\n')
                     logger.info(classification_report(y_test, y_pred))
@@ -199,9 +200,9 @@ class LendingModelTrainer:
 
                     perf_df = pd.DataFrame({'y_pred': y_pred_proba, 'y_test': y_test})
                     combo_chart(perf_df, xvar='y_pred', q=10, yvar='y_test', 
-                                savefile=self.model_name + '_perf.png')
+                                savefile=self.basefolder + self.model_name + '_perf.png')
                     live.log_image(self.model_name + '_perf.png',
-                                    self.model_name + '_perf.png')
+                                    self.basefolder + self.model_name + '_perf.png')
 
                 if save_test:
                     X_test_df = pd.DataFrame(X_test, columns=X_test.columns)
@@ -231,7 +232,7 @@ class LendingModelTrainer:
         preds_full = self.model_core.predict_proba(Xfull, filter=False, engineer=False)
         percentiles = np.percentile(preds_full['pred_proba'], range(5,100,5))
         self.model_core.percentiles = {p:v for p,v in zip(range(5,100,5), percentiles)}
-        self.model_core.save()
+        self.model_core.save(self.basefolder)
 
     def plot_learning_curve(self, time_budget):
         time_history, best_valid_loss_history, _, _, _ = get_output_from_log(filename=self.log_file,
@@ -240,8 +241,7 @@ class LendingModelTrainer:
         plt.xlabel("Wall Clock Time (s)")
         plt.ylabel("Validation Accuracy")
         plt.step(time_history, 1 - np.array(best_valid_loss_history), where="post")
-        plt.savefig(self.model_name + '_learning_plot.png')
-        plt.show()
+        plt.savefig(self.basefolder + self.model_name + '_learning_plot.png')
 
     def feat_imp(self):
         return self.model_core.feat_imp()
@@ -368,14 +368,14 @@ class UWModelTrainer(LendingModelTrainer):
                 with Live() as live:
                     perf_df = pd.DataFrame({'y_pred': y_pred_proba, 'y_test': y_test, 'profit_test': extra['test_profit']})
                     combo_chart(perf_df, xvar='y_pred', q=10, yvar='profit_test', 
-                                savefile=self.model_name +'_perf_uw.png')
+                                savefile=self.basefolder + self.model_name +'_perf_uw.png')
                     live.log_image(self.model_name +'_perf_uw.png',
-                                    self.model_name + '_perf_uw.png')
+                                    self.basefolder + self.model_name + '_perf_uw.png')
 
             return y_pred_proba, y_pred, extra
 
         else:
             return super().fit(X_train, X_test, y_train, y_test, extra, 
                                 time_budget, automl_config, show_stats, 
-                                show_plots, save_test, save_model, threshold, percentile)
+                                show_plots, save_test, threshold, percentile)
 

@@ -68,8 +68,8 @@ class LendingModelCore:
                 (c not in list(self.extra_features))
                 and (c not in list(self.optional_features))]
 
-    def save(self):
-        with open(str(self.model_name) + '_model.dill', 'wb') as file:
+    def save(self, basefolder='./'):
+        with open(basefolder + str(self.model_name) + '_model.dill', 'wb') as file:
             dill.dump(self, file)
 
     def add_feature_eng(self, fe:Callable[[pd.DataFrame], pd.DataFrame]):

@@ -12,7 +12,8 @@ import logging
 import numpy as np
 
 # %%
-logger = logging.getLogger('westgate.flaml_model')
+logger = logging.getLogger('westgate.flaml_model_trainer')
+logging.basicConfig()
 # fhandler = logging.FileHandler(filename='metrics.log', mode='w')
 # formatter = logging.Formatter('%(message)s')
 # fhandler.setFormatter(formatter)
@@ -22,7 +23,10 @@ logger.setLevel(logging.INFO)
 # %%
 default_model = UWModel()
 
-default_model_trainer = UWModelTrainer(model_name='default', model_core=default_model, model_version='1.0')
+default_model_trainer = UWModelTrainer(model_name='default', 
+                                        model_core=default_model, 
+                                        model_version='1.0',
+                                        basefolder='default_model/')
 
 # %%
 data_2022_df = pd.read_csv(basefolder + 'loan_outcomes_2022.csv', encoding='latin')
@@ -143,7 +147,7 @@ config = {
 
 y_pred_proba, y_pred, extra = default_model_trainer.fit(
         X_train, X_test, y_train, y_test, extra,
-        time_budget=120, 
+        time_budget=180, 
         automl_config=config,
         show_plots=True,
         percentile=90
