@@ -149,8 +149,8 @@ class LendingModelTrainer:
 
             if show_plots:
                 self.plot_learning_curve(time_budget)
-                live.log_image(self.model_name + '_learning_plot.png',
-                               self.basefolder + self.model_name + '_learning_plot.png')
+                live.log_image('learning_plot.png',
+                               self.basefolder + 'learning_plot.png')
 
             if X_test is not None:
 
@@ -179,7 +179,7 @@ class LendingModelTrainer:
                     logger.info(y_pred_proba_bins.value_counts())
 
                     logger.info('\nBest validation loss: ' + str(automl.best_loss))
-                    live.log_metric(self.model_name + '_validation_loss', automl.best_loss)
+                    live.log_metric('validation_loss', automl.best_loss)
 
                     logger.info('\n')
                     logger.info(classification_report(y_test, y_pred))
@@ -187,12 +187,12 @@ class LendingModelTrainer:
                     cr = classification_report(y_test, y_pred, output_dict=True)
                     m0 = cr['0']
                     m1 = cr['1']
-                    live.log_metric(self.model_name + '_0_precision', m0['precision'])
-                    live.log_metric(self.model_name + '_0_recall', m0['recall'])
-                    live.log_metric(self.model_name + '_0_f1-score', m0['f1-score'])
-                    live.log_metric(self.model_name + '_1_precision', m1['precision'])
-                    live.log_metric(self.model_name + '_1_recall', m1['recall'])
-                    live.log_metric(self.model_name + '_1_f1-score', m1['f1-score'])
+                    live.log_metric('[0] precision', m0['precision'])
+                    live.log_metric('[0] recall', m0['recall'])
+                    live.log_metric('[0] f1-score', m0['f1-score'])
+                    live.log_metric('[1] precision', m1['precision'])
+                    live.log_metric('[1] recall', m1['recall'])
+                    live.log_metric('[1] f1-score', m1['f1-score'])
 
                     logger.info('Confusion matrix:')
                     logger.info(confusion_matrix(y_test, y_pred))
@@ -201,7 +201,7 @@ class LendingModelTrainer:
                     perf_df = pd.DataFrame({'y_pred': y_pred_proba, 'y_test': y_test})
                     combo_chart(perf_df, xvar='y_pred', q=10, yvar='y_test', 
                                 savefile=self.basefolder + self.model_name + '_perf.png')
-                    live.log_image(self.model_name + '_perf.png',
+                    live.log_image('perf.png',
                                     self.basefolder + self.model_name + '_perf.png')
 
                 if save_test:
@@ -241,7 +241,7 @@ class LendingModelTrainer:
         plt.xlabel("Wall Clock Time (s)")
         plt.ylabel("Validation Accuracy")
         plt.step(time_history, 1 - np.array(best_valid_loss_history), where="post")
-        plt.savefig(self.basefolder + self.model_name + '_learning_plot.png')
+        plt.savefig(self.basefolder + 'learning_plot.png')
 
     def feat_imp(self):
         return self.model_core.feat_imp()
@@ -369,7 +369,7 @@ class UWModelTrainer(LendingModelTrainer):
                     perf_df = pd.DataFrame({'y_pred': y_pred_proba, 'y_test': y_test, 'profit_test': extra['test_profit']})
                     combo_chart(perf_df, xvar='y_pred', q=10, yvar='profit_test', 
                                 savefile=self.basefolder + self.model_name +'_perf_uw.png')
-                    live.log_image(self.model_name +'_perf_uw.png',
+                    live.log_image('perf_uw.png',
                                     self.basefolder + self.model_name + '_perf_uw.png')
 
             return y_pred_proba, y_pred, extra
