@@ -11,7 +11,7 @@ from dateutil.relativedelta import relativedelta
 from dateutil.parser import parse
 from sklearn.ensemble._stacking import StackingClassifier
 from westgate.combochart import combo_chart
-from westgate.flaml_model_utils import load_model, feature_engineer_basic, EmptyDataFrameException
+from westgate.flaml_model_utils import load_model, EmptyDataFrameException
 import logging
 import dill
 
