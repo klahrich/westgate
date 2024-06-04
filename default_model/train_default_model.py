@@ -147,7 +147,7 @@ config = {
 
 y_pred_proba, y_pred, extra = default_model_trainer.fit(
         X_train, X_test, y_train, y_test, extra,
-        time_budget=180, 
+        time_budget=20, 
         automl_config=config,
         show_plots=True,
         percentile=90

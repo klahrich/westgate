@@ -1,9 +1,0 @@
-{
-    "default_validation_loss": 0.2677259998158801,
-    "default_0_precision": 0.75,
-    "default_0_recall": 0.9529411764705882,
-    "default_0_f1-score": 0.8393782383419688,
-    "default_1_precision": 0.6666666666666666,
-    "default_1_recall": 0.22857142857142856,
-    "default_1_f1-score": 0.3404255319148936
-}
