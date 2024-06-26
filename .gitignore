@@ -6,6 +6,8 @@ __pycache__/
 .env
 refusal_model/*.pkl
 default_model/*.pkl
+refusal_model/*.png
+default_model/*.png
 model_binaries/
 notebooks/*.csv
 notebooks/*.xlsx
