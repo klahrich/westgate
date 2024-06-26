@@ -11,8 +11,8 @@ from datetime import date
 import os
 from supabase import create_client, Client
 
-from dotenv import load_dotenv
-load_dotenv()
+# from dotenv import load_dotenv
+# load_dotenv()
 
 app = FastAPI()
 model_refusal:LendingModel = load_model('refusal', basefolder='model_binaries/')
@@ -123,9 +123,6 @@ def predict_proba(data:LoanRequest, org='westgate'):
         else:
             percentile_default = 100
 
-        # 80th percentile default 1.0: 0.4055162847042084
-        # 25th percentile refusal 0.2: 0.5865068435668945
-
         if (pred_refusal >= model_refusal.percentiles[15]) or \
             (pred_default >= model_default.percentiles[80]):
             uw_decision = 'refuse'
@@ -141,10 +138,13 @@ def predict_proba(data:LoanRequest, org='westgate'):
             'decision': uw_decision
         }).execute()
 
+        data['dob'] = data['dob'].strftime('%Y-%m-%d')
+        data['request_date'] = data['request_date'].strftime('%Y-%m-%d')
+
         supabase.table('attributes').insert({
             'attributes_json': data,
             'decision_id': r.data[0]['id']
-        })
+        }).execute()
 
         return {
             'uw_decision': uw_decision,
