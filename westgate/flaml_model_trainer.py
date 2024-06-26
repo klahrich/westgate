@@ -14,11 +14,13 @@ from westgate.combochart import combo_chart
 from westgate.flaml_model_core import LendingModelCore
 from sklearn.model_selection import ShuffleSplit
 import logging
-from dvclive import Live
+import mlflow
 
 pd.set_option('mode.chained_assignment', None)
 locale.setlocale(locale.LC_ALL, '')
 
+# to view MLFlow runs (from default_model folder): 
+# mlflow ui --port 8080 --backend-store-uri sqlite:///mlruns.db
 
 # in the features.csv file, 
 # variables marked 'extra' are required for feature engineering and saved in features_in
@@ -44,11 +46,11 @@ class LendingModelTrainer:
         self.ylabel = ylabel
         
     def update_extra(self, extra, X_train, y_train, X_test, y_test) -> Dict:
-        for f in list(self.extra_features):
+        for f in list(self.model_core.extra_features):
             extra['train_' + f] = X_train[f]
             extra['test_' + f] = X_test[f]
 
-        for f in list(self.optional_features):
+        for f in list(self.model_core.optional_features):
             if f in X_train.columns:
                 extra['train_' + f] = X_train[f]
             if f in X_test.columns:
@@ -145,90 +147,96 @@ class LendingModelTrainer:
 
         self.model_core.automl = automl
 
-        with Live() as live:
+        if show_plots:
+            self.plot_learning_curve(time_budget)
+            #live.log_image('learning_plot.png', self.basefolder + 'learning_plot.png')
 
-            if show_plots:
-                self.plot_learning_curve(time_budget)
-                live.log_image('learning_plot.png',
-                               self.basefolder + 'learning_plot.png')
+        if X_test is not None:
 
-            if X_test is not None:
+            assert ((threshold is not None) or (percentile is not None))
+            assert ((threshold is None) or (percentile is None))
 
-                assert ((threshold is not None) or (percentile is not None))
-                assert ((threshold is None) or (percentile is None))
+            y_pred_proba = automl.predict_proba(X_test)[:, 1]
 
-                y_pred_proba = automl.predict_proba(X_test)[:, 1]
+            if threshold is None:
+                threshold = np.percentile(y_pred_proba, percentile)
 
-                if threshold is None:
-                    threshold = np.percentile(y_pred_proba, percentile)
+            y_pred = np.where(y_pred_proba >= threshold, 1, 0)
+    
+            if show_stats:
+                logger.info('Actual ' + self.ylabel + '[TEST]:')
+                logger.info(str(y_test.sum()) + ' (' + str(round(y_test.sum() / y_test.size * 100, 1)) + '%)') 
 
-                y_pred = np.where(y_pred_proba >= threshold, 1, 0)
-        
-                if show_stats:
-                    logger.info('Actual ' + self.ylabel + '[TEST]:')
-                    logger.info(str(y_test.sum()) + ' (' + str(round(y_test.sum() / y_test.size * 100, 1)) + '%)') 
+                logger.info('Predicted ' + self.ylabel + '[TEST]:')
+                logger.info(str(y_pred.sum()) + ' (' + str(round(y_pred.sum() / y_pred.size * 100, 1)) + '%)') 
 
-                    logger.info('Predicted ' + self.ylabel + '[TEST]:')
-                    logger.info(str(y_pred.sum()) + ' (' + str(round(y_pred.sum() / y_pred.size * 100, 1)) + '%)') 
+                y_pred_proba_df = pd.DataFrame({'y_pred_test': y_pred_proba})
+                y_pred_proba_df.plot.hist()
 
-                    y_pred_proba_df = pd.DataFrame({'y_pred_test': y_pred_proba})
-                    y_pred_proba_df.plot.hist()
+                y_pred_proba_bins = pd.cut(y_pred_proba, 10, duplicates = 'drop')
+                logger.info('\ny_pred_proba distribution:')
+                logger.info(y_pred_proba_bins.value_counts())
 
-                    y_pred_proba_bins = pd.cut(y_pred_proba, 10, duplicates = 'drop')
-                    logger.info('\ny_pred_proba distribution:')
-                    logger.info(y_pred_proba_bins.value_counts())
+                logger.info('\nBest validation loss: ' + str(automl.best_loss))
+                mlflow.log_metric('validation_loss', automl.best_loss)
 
-                    logger.info('\nBest validation loss: ' + str(automl.best_loss))
-                    live.log_metric('validation_loss', automl.best_loss)
+                logger.info('\n')
+                logger.info(classification_report(y_test, y_pred))
+                
+                cr = classification_report(y_test, y_pred, output_dict=True)
+                m0 = cr['0']
+                m1 = cr['1']
+                mlflow.log_metric('precision_0', m0['precision'])
+                mlflow.log_metric('recall_0', m0['recall'])
+                mlflow.log_metric('f1_0', m0['f1-score'])
+                mlflow.log_metric('precision_1', m1['precision'])
+                mlflow.log_metric('recall_1', m1['recall'])
+                mlflow.log_metric('f1_1', m1['f1-score'])
 
-                    logger.info('\n')
-                    logger.info(classification_report(y_test, y_pred))
-                    
-                    cr = classification_report(y_test, y_pred, output_dict=True)
-                    m0 = cr['0']
-                    m1 = cr['1']
-                    live.log_metric('[0] precision', m0['precision'])
-                    live.log_metric('[0] recall', m0['recall'])
-                    live.log_metric('[0] f1-score', m0['f1-score'])
-                    live.log_metric('[1] precision', m1['precision'])
-                    live.log_metric('[1] recall', m1['recall'])
-                    live.log_metric('[1] f1-score', m1['f1-score'])
+                logger.info('Confusion matrix:')
+                logger.info(confusion_matrix(y_test, y_pred))
+                logger.info('\n')
 
-                    logger.info('Confusion matrix:')
-                    logger.info(confusion_matrix(y_test, y_pred))
-                    logger.info('\n')
+                perf_df = pd.DataFrame({'y_pred': y_pred_proba, 'y_test': y_test})
+                combo_chart(perf_df, xvar='y_pred', q=10, yvar='y_test', 
+                            savefile=self.basefolder + self.model_name + '_perf.png')
+                #live.log_image('perf.png', self.basefolder + self.model_name + '_perf.png')
 
-                    perf_df = pd.DataFrame({'y_pred': y_pred_proba, 'y_test': y_test})
-                    combo_chart(perf_df, xvar='y_pred', q=10, yvar='y_test', 
-                                savefile=self.basefolder + self.model_name + '_perf.png')
-                    live.log_image('perf.png',
-                                    self.basefolder + self.model_name + '_perf.png')
+            if save_test:
+                X_test_df = pd.DataFrame(X_test, columns=X_test.columns)
+                X_test_df['y_pred'] = y_pred
+                X_test_df['y_pred_proba'] = y_pred_proba
+                X_test_df['y_test'] = y_test
 
-                if save_test:
-                    X_test_df = pd.DataFrame(X_test, columns=X_test.columns)
-                    X_test_df['y_pred'] = y_pred
-                    X_test_df['y_pred_proba'] = y_pred_proba
-                    X_test_df['y_test'] = y_test
+                for k,v in extra.items():
+                    if k.startswith('test_'):
+                        X_test_df[k] = v.reset_index(drop=True)
 
-                    for k,v in extra.items():
-                        if k.startswith('test_'):
-                            X_test_df[k] = v.reset_index(drop=True)
-
-                    print('Saving ' + 'X_test_' + self.model_name + '.csv')
-                    X_test_df.to_csv(self.basefolder + 'X_test_' + self.model_name + '.csv', index=False)
+                print('Saving ' + 'X_test_' + self.model_name + '.csv')
+                X_test_df.to_csv(self.basefolder + 'X_test_' + self.model_name + '.csv', index=False)
 
             return y_pred_proba, y_pred, None
 
     def retrain_full(self, Xfull, yfull, weight_full=None, time_budget=60):
-        self.model_core.automl.retrain_from_log(
-            self.log_file,
-            Xfull,
-            yfull,
-            sample_weight=weight_full,
-            time_budget=time_budget,
-            train_best=True,
-            train_full=True,
-        )
+        if weight_full is not None:
+            self.model_core.automl.retrain_from_log(
+                self.log_file,
+                Xfull,
+                yfull,
+                sample_weight=weight_full,
+                time_budget=time_budget,
+                train_best=True,
+                train_full=True
+            )
+        else:
+            self.model_core.automl.retrain_from_log(
+                self.log_file,
+                Xfull,
+                yfull,
+                time_budget=time_budget,
+                train_best=True,
+                train_full=True
+            )
         preds_full = self.model_core.predict_proba(Xfull, filter=False, engineer=False)
         percentiles = np.percentile(preds_full['pred_proba'], range(5,100,5))
         self.model_core.percentiles = {p:v for p,v in zip(range(5,100,5), percentiles)}
@@ -365,12 +373,10 @@ class UWModelTrainer(LendingModelTrainer):
             #assert abs(predicted_anti_profit_test/delta - 1) < 0.05
 
             if show_plots:
-                with Live() as live:
-                    perf_df = pd.DataFrame({'y_pred': y_pred_proba, 'y_test': y_test, 'profit_test': extra['test_profit']})
-                    combo_chart(perf_df, xvar='y_pred', q=10, yvar='profit_test', 
-                                savefile=self.basefolder + self.model_name +'_perf_uw.png')
-                    live.log_image('perf_uw.png',
-                                    self.basefolder + self.model_name + '_perf_uw.png')
+                perf_df = pd.DataFrame({'y_pred': y_pred_proba, 'y_test': y_test, 'profit_test': extra['test_profit']})
+                combo_chart(perf_df, xvar='y_pred', q=10, yvar='profit_test', 
+                            savefile=self.basefolder + self.model_name +'_perf_uw.png')
+                #live.log_image('perf_uw.png', self.basefolder + self.model_name + '_perf_uw.png')
 
             return y_pred_proba, y_pred, extra
 

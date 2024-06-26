@@ -1,20 +1,22 @@
 from queue import Empty
 import uvicorn
 from fastapi import FastAPI
-from westgate.flaml_model import *
+from westgate.flaml_model_core import LendingModel, UWModel, EmptyDataFrameException
+from westgate.flaml_model_utils import load_model
+import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 from typing import Literal
-from datetime import date, datetime
+from datetime import date
 import os
 from supabase import create_client, Client
 
-# from dotenv import load_dotenv
-# load_dotenv()
+from dotenv import load_dotenv
+load_dotenv()
 
 app = FastAPI()
-model_refusal = load_model('refusal_0.4', basefolder='model_binaries/')
-model_default = load_model('default_1.0', basefolder='model_binaries/')
+model_refusal:LendingModel = load_model('refusal', basefolder='model_binaries/')
+model_default:UWModel = load_model('default', basefolder='model_binaries/')
 
 SUPABASE_URL = os.environ['SUPABASE_URL']
 SUPABASE_KEY = os.environ['SUPABASE_KEY']
@@ -93,7 +95,7 @@ def index():
 
 @app.post('/predict')
 def predict_proba(data:LoanRequest, org='westgate'):
-    data = data.dict()
+    data = data.model_dump()
     df = pd.DataFrame.from_dict([data])
 
     try:
@@ -130,7 +132,7 @@ def predict_proba(data:LoanRequest, org='westgate'):
         else:
             uw_decision = 'accept'
 
-        supabase.table('logs').insert({
+        r = supabase.table('logs').insert({
             'refusal_score': pred_refusal,
             'refusal_percentile': percentile_refusal,
             'default_score': pred_default,
@@ -138,6 +140,11 @@ def predict_proba(data:LoanRequest, org='westgate'):
             'organization': org,
             'decision': uw_decision
         }).execute()
+
+        supabase.table('attributes').insert({
+            'attributes_json': data,
+            'decision_id': r.data[0]['id']
+        })
 
         return {
             'uw_decision': uw_decision,

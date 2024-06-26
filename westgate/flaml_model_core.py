@@ -10,8 +10,7 @@ from pandas.api.types import is_string_dtype
 from dateutil.relativedelta import relativedelta
 from dateutil.parser import parse
 from sklearn.ensemble._stacking import StackingClassifier
-from westgate.combochart import combo_chart
-from westgate.flaml_model_utils import load_model, EmptyDataFrameException
+from westgate.flaml_model_utils import EmptyDataFrameException
 import logging
 import dill
 
@@ -34,6 +33,8 @@ class LendingModelCore:
         self.thresholds_min = None
         self.thresholds_max = None
         self.percentiles = None
+        self.extra_features = None
+        self.optional_features = None
 
     def set_features_file(self, features_file:str):
         self.features_file = features_file
