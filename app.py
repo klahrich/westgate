@@ -123,7 +123,7 @@ def predict_proba(data:LoanRequest, org='westgate'):
         else:
             percentile_default = 100
 
-        if (pred_refusal >= model_refusal.percentiles[15]) or \
+        if (pred_refusal >= model_refusal.percentiles[20]) or \
             (pred_default >= model_default.percentiles[80]):
             uw_decision = 'refuse'
         else:

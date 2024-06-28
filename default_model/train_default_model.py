@@ -55,8 +55,8 @@ def main(time):
 
     # %%
     accepted_df['request_yyyymm'] = accepted_df['request_date'].str[0:7]
-    accepted_df['validation_flag'] = accepted_df['request_yyyymm'].isin(['2023-01', '2023-02'])
-    accepted_df['test_flag'] = accepted_df['request_yyyymm'].isin(['2023-03'])
+    accepted_df['validation_flag'] = accepted_df['request_yyyymm'].isin(['2023-04'])
+    accepted_df['test_flag'] = accepted_df['request_yyyymm'].isin(['2023-05'])
     accepted_df['weight'] = np.select(
         [
             accepted_df['request_yyyymm'] == '2022-01',
