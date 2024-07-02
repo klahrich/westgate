@@ -9,6 +9,11 @@ import os
 import logging
 import mlflow
 import argparse
+import json
+import tempfile
+
+# to view MLFlow runs (from default_model folder): 
+# mlflow ui --port 8080 --backend-store-uri sqlite:///mlruns.db
 
 
 def main(time):
@@ -50,6 +55,7 @@ def main(time):
 
     # %%
     accepted_2023_df['gender'] = accepted_2023_df['gender'].str.lower()
+    accepted_2023_df['Id'] = accepted_2023_df['LoanId']
 
     # %%
     refused_2023_df.rename(columns={'requestDate': 'request_date'}, inplace=True)
@@ -161,6 +167,11 @@ def main(time):
             time_budget=60
         )
 
+        with open('refusal_model/refusal_percentiles.txt', 'w') as f:
+            json.dump(refusal_model_trainer.model_core.percentiles, f)
+            f.seek(0) 
+            mlflow.log_artifact(f.name)
+
     # %%
     for handler in logger.handlers:
         logger.removeHandler(handler)
@@ -170,7 +181,7 @@ def main(time):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('-t', '--time', default=60, type=int)
+    parser.add_argument('-t', '--time', default=600, type=int)
     args = parser.parse_args()
 
     time = args.time

@@ -1,5 +1,5 @@
 outs:
-- md5: 0f45928f3f33586ca12651021b8af10f
-  size: 94402307
+- md5: 6a185fadf8ad32442549cdad1edd333b
+  size: 94325752
   hash: md5
   path: refusal_model.dill
