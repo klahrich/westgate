@@ -98,45 +98,26 @@ def predict_proba(data:LoanRequest, org='westgate'):
     data = data.model_dump()
     df = pd.DataFrame.from_dict([data])
 
-    try:
-        pred_refusal = model_refusal.predict_proba(df, filter=True, engineer=True).item()
-        pred_default = model_default.predict_proba(df, filter=True, engineer=True).item()
+    auto_refuse = (
+        (df['account_age_days'] < 85).bool()
+        or (df['count_nsf_90_days'] > 8).bool()
+        or (df['count_nsf_30_days'] > 6).bool()
+        or (df['count_stop_payment_90_days'] > 4).bool()
+    )
 
-        percentiles_refusal = list(model_refusal.percentiles.keys())
-        percentiles_default = list(model_default.percentiles.keys())
-
-        #refusal
-
-        idx_refusal = np.digitize(pred_refusal, list(model_refusal.percentiles.values()))
-
-        if idx_refusal < len(percentiles_refusal):
-            percentile_refusal = list(model_refusal.percentiles.keys())[idx_refusal]
-        else:
-            percentile_refusal = 100
-
-        #default
-
-        idx_default = np.digitize(pred_default, list(model_default.percentiles.values()))
-
-        if idx_default < len(percentiles_default):
-            percentile_default = list(model_default.percentiles.keys())[idx_default]
-        else:
-            percentile_default = 100
-
-        if (pred_refusal >= model_refusal.percentiles[20]) or \
-            (pred_default >= model_default.percentiles[80]):
-            uw_decision = 'refuse'
-        else:
-            uw_decision = 'accept'
+    if auto_refuse:
+        result = {
+            'uw_decision': 'refuse',
+            'score': 1,
+            'percentile': 100,
+            'info': ['auto_refuse']
+        }
 
         r = supabase.table('logs').insert({
-            'refusal_score': pred_refusal,
-            'refusal_percentile': percentile_refusal,
-            'default_score': pred_default,
-            'default_percentile': percentile_default,
-            'organization': org,
-            'decision': uw_decision
-        }).execute()
+                'organization': org,
+                'decision': 'refuse',
+                'info': 'auto_refuse'
+            }).execute()
 
         data['dob'] = data['dob'].strftime('%Y-%m-%d')
         data['request_date'] = data['request_date'].strftime('%Y-%m-%d')
@@ -146,21 +127,82 @@ def predict_proba(data:LoanRequest, org='westgate'):
             'decision_id': r.data[0]['id']
         }).execute()
 
-        return {
-            'uw_decision': uw_decision,
-            'score': 0.5 * (pred_refusal + pred_default),
-            'percentile': 0.5 * (percentile_refusal + percentile_default),
-            'info': []
-        }
+        return result
 
-    except EmptyDataFrameException as e:
-        return {
-            'uw_decision': 'n/a',
-            'score': 0,
-            'percentile': 0,
-            'info': ['Empty dataframe after filtering',
+    else:
+        try:
+            pred_refusal = model_refusal.predict_proba(df, filter=True, engineer=True).item()
+            pred_default = model_default.predict_proba(df, filter=True, engineer=True).item()
+
+            score = 0.5 * (pred_refusal + pred_default)
+
+            percentiles_refusal = list(model_refusal.percentiles.keys())
+            percentiles_default = list(model_default.percentiles.keys())
+
+            #refusal
+
+            idx_refusal = np.digitize(pred_refusal, list(model_refusal.percentiles.values()))
+
+            if idx_refusal < len(percentiles_refusal):
+                percentile_refusal = list(model_refusal.percentiles.keys())[idx_refusal]
+            else:
+                percentile_refusal = 100
+
+            #default
+
+            idx_default = np.digitize(pred_default, list(model_default.percentiles.values()))
+
+            if idx_default < len(percentiles_default):
+                percentile_default = list(model_default.percentiles.keys())[idx_default]
+            else:
+                percentile_default = 100
+
+            percentile = 0.5 * (percentile_refusal + percentile_default)
+
+            if (pred_refusal >= model_refusal.percentiles[30]) or \
+                (pred_default >= model_default.percentiles[80]):
+                uw_decision = 'refuse'
+            else:
+                uw_decision = 'accept'
+
+            result = {
+                'uw_decision': uw_decision,
+                'score': score,
+                'percentile': percentile,
+                'info': []
+            }
+
+            r = supabase.table('logs').insert({
+                'refusal_score': pred_refusal,
+                'refusal_percentile': percentile_refusal,
+                'default_score': pred_default,
+                'default_percentile': percentile_default,
+                'organization': org,
+                'decision': uw_decision
+            }).execute()
+
+            data['dob'] = data['dob'].strftime('%Y-%m-%d')
+            data['request_date'] = data['request_date'].strftime('%Y-%m-%d')
+
+            supabase.table('attributes').insert({
+                'attributes_json': data,
+                'decision_id': r.data[0]['id']
+            }).execute()
+
+            return result
+
+        except EmptyDataFrameException as e:
+            info = ['Empty dataframe after filtering',
                     'Possible causes: minimum balance was too low']
-        }
+            return {
+                'uw_decision': 'n/a',
+                'score': 0,
+                'percentile': 0,
+                'info': info
+            }
+        
+    
+    
 
     # return {
     #     'refusal':{
