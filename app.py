@@ -159,7 +159,7 @@ def predict_proba(data:LoanRequest, org='westgate'):
 
             percentile = 0.5 * (percentile_refusal + percentile_default)
 
-            if (pred_refusal >= model_refusal.percentiles[30]) or \
+            if (pred_refusal >= model_refusal.percentiles[35]) or \
                 (pred_default >= model_default.percentiles[80]):
                 uw_decision = 'refuse'
             else:
@@ -172,22 +172,27 @@ def predict_proba(data:LoanRequest, org='westgate'):
                 'info': []
             }
 
-            r = supabase.table('logs').insert({
-                'refusal_score': pred_refusal,
-                'refusal_percentile': percentile_refusal,
-                'default_score': pred_default,
-                'default_percentile': percentile_default,
-                'organization': org,
-                'decision': uw_decision
-            }).execute()
+            try:
+                r = supabase.table('logs').insert({
+                    'refusal_score': pred_refusal,
+                    'refusal_percentile': percentile_refusal,
+                    'default_score': pred_default,
+                    'default_percentile': percentile_default,
+                    'organization': org,
+                    'decision': uw_decision
+                }).execute()
 
-            data['dob'] = data['dob'].strftime('%Y-%m-%d')
-            data['request_date'] = data['request_date'].strftime('%Y-%m-%d')
+                data['dob'] = data['dob'].strftime('%Y-%m-%d')
+                data['request_date'] = data['request_date'].strftime('%Y-%m-%d')
 
-            supabase.table('attributes').insert({
-                'attributes_json': data,
-                'decision_id': r.data[0]['id']
-            }).execute()
+                supabase.table('attributes').insert({
+                    'attributes_json': data,
+                    'decision_id': r.data[0]['id']
+                }).execute()
+            
+            except Exception as e:
+                print("SUPABASE ERROR")
+                print(e)
 
             return result
 

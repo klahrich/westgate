@@ -17,3 +17,5 @@ X_test*.csv
 default_model/*.xlsx
 refusal_model/refusal_model.dill
 default_model/default_model.dill
+mlruns/
+mlruns.db

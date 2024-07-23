@@ -9,6 +9,7 @@ data
 default_model
 refusal_model
 notebooks
+mlruns
 mlruns.db
 analysis
 graveyard

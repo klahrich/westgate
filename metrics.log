@@ -1,0 +1,42 @@
+Model: default
+Model version: 1.0
+---
+
+X_train shape: (12232, 41)
+X_test shape: (937, 41)
+Model training started...
+Actual Default[TEST]:
+231 (24.7%)
+Predicted Default[TEST]:
+188 (20.1%)
+
+y_pred_proba distribution:
+(0.0438, 0.12]    228
+(0.12, 0.196]     239
+(0.196, 0.271]    151
+(0.271, 0.347]     91
+(0.347, 0.423]     66
+(0.423, 0.498]     57
+(0.498, 0.574]     38
+(0.574, 0.65]      43
+(0.65, 0.725]      18
+(0.725, 0.801]      6
+Name: count, dtype: int64
+
+Best validation loss: 0.259993606315848
+
+
+              precision    recall  f1-score   support
+
+           0       0.82      0.87      0.84       706
+           1       0.50      0.41      0.45       231
+
+    accuracy                           0.75       937
+   macro avg       0.66      0.64      0.64       937
+weighted avg       0.74      0.75      0.74       937
+
+Confusion matrix:
+[[612  94]
+ [137  94]]
+
+

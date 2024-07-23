@@ -14,7 +14,7 @@ import mlflow
 import argparse
 
 
-def main(time):
+def main(run_name, time):
 
     logger = logging.getLogger('westgate.flaml_model_trainer')
     logging.basicConfig()
@@ -163,14 +163,14 @@ def main(time):
         'sample_weight_val': weight_val
     }
 
-    with mlflow.start_run():
+    with mlflow.start_run(run_name=run_name):
 
         y_pred_proba, y_pred, extra = default_model_trainer.fit(
                 X_train, X_test, y_train, y_test, extra,
                 time_budget=time, 
                 automl_config=config,
                 show_plots=True,
-                percentile=90
+                percentile=80
         )
 
         # %%
@@ -199,10 +199,12 @@ def main(time):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('name')
     parser.add_argument('-t', '--time', default=60, type=int)
     args = parser.parse_args()
 
     time = args.time
-    main(time)
+    name = args.name
+    main(name, time)
 
 

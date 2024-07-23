@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from pandas.api.types import is_string_dtype
 from dateutil.parser import parse
 from colored import Fore, Back, Style
+from termcolor import cprint
 from westgate.combochart import combo_chart
 from westgate.flaml_model_core import LendingModelCore
 from sklearn.model_selection import ShuffleSplit
@@ -137,6 +138,8 @@ class LendingModelTrainer:
             "verbose": 2
         }
 
+        mlflow.log_param('time_budget', time_budget)
+
         automl_settings.update(automl_config)
 
         automl = AutoML()
@@ -146,6 +149,10 @@ class LendingModelTrainer:
         automl.fit(X_train, y_train, **automl_settings)
 
         self.model_core.automl = automl
+
+        imp_df = self.model_core.feat_imp()
+        imp_df.to_csv(self.basefolder + 'feature_importance.csv', index=False)
+        mlflow.log_artifact(self.basefolder + 'feature_importance.csv')
 
         if show_plots:
             self.plot_learning_curve(time_budget)
@@ -179,6 +186,7 @@ class LendingModelTrainer:
 
                 logger.info('\nBest validation loss: ' + str(automl.best_loss))
                 mlflow.log_metric('validation_loss', automl.best_loss)
+                cprint(f"Validation loss: {automl.best_loss}", "yellow")
 
                 logger.info('\n')
                 logger.info(classification_report(y_test, y_pred))

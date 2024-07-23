@@ -184,7 +184,7 @@ class LendingModelCore:
 
         X['monthly_repayment_capacity'] = (X['sum_employer_income_current_month']
                                             - X['sum_loan_deposits_90_days'] / 3.0)
-
+        
         return X
 
     def feature_engineer(self, X_train, X_test=None):
@@ -247,6 +247,9 @@ class UWModel(LendingModelCore):
     
     def _feature_engineer(self, X):
         X = super()._feature_engineer(X)
+
+        X['avg_employer_income_minus_microloan_payment'] = (X['average_employer_income_deposit']
+                                                            - X['average_micro_loan_payment'])
 
         return X
 
