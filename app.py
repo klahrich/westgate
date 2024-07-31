@@ -11,8 +11,8 @@ from datetime import date
 import os
 from supabase import create_client, Client
 
-# from dotenv import load_dotenv
-# load_dotenv()
+from dotenv import load_dotenv
+load_dotenv()
 
 app = FastAPI()
 model_refusal:LendingModel = load_model('refusal', basefolder='model_binaries/')
@@ -131,12 +131,64 @@ class AccountDetails(BaseModel):
 def index():
     return {'message': 'Westgate UW'}
 
+def save_decision(org, 
+                  decision, 
+                  info, 
+                  refusal_score=None,
+                  refusal_percentile=None,
+                  default_score=None,
+                  default_percentile=None):
+    r = supabase.table('logs').insert({
+                'organization': org,
+                'decision': decision,
+                'info': info,
+                'refusal_score': refusal_score,
+                'refusal_percentile': refusal_percentile,
+                'default_score': default_score,
+                'default_percentile': default_percentile,
+            }).execute()
+    return r
 
-def process_trx()
+def save_attributes(data, decision_id):
+    supabase.table('attributes').insert({
+            'attributes_json': data,
+            'decision_id': decision_id
+        }).execute()
+
+def save_trx(details:Attributes, decision_id):
+    if (details is not None) and (details.HttpStatusCode==200) and (len(details.Accounts) > 0):
+            print('Saving account holder information')
+            supabase.table('account_holder').insert({
+                'decision_id': decision_id,
+                'name': details.Accounts[0].Holder.Name,
+                'address': details.Accounts[0].Holder.Address,
+                'email': details.Accounts[0].Holder.Email,
+                'phone_number': details.Accounts[0].Holder.PhoneNumber
+            }).execute()
+
+def save_all(org, 
+            decision, 
+            info, 
+            attributes=None,
+            details=None,
+            refusal_score=None,
+            refusal_percentile=None,
+            default_score=None,
+            default_percentile=None):
+    
+    r = save_decision(org, decision, info, 
+                      refusal_score, refusal_percentile,
+                      default_score, default_percentile)
+
+    attributes['dob'] = attributes['dob'].strftime('%Y-%m-%d')
+    attributes['request_date'] = attributes['request_date'].strftime('%Y-%m-%d')
+
+    save_attributes(attributes, r.data[0]['id'])
+    save_trx(details, r.data[0]['id'])
 
 
 @app.post('/predict')
-def predict_proba(attributes:Attributes, details:AccountDetails|None=None, org='westgate'):
+def predict(attributes:Attributes, details:AccountDetails|None=None, org='westgate'):
 
     data = attributes.model_dump()
     df = pd.DataFrame.from_dict([data])
@@ -153,32 +205,16 @@ def predict_proba(attributes:Attributes, details:AccountDetails|None=None, org='
             'uw_decision': 'refuse',
             'score': 1,
             'percentile': 100,
-            'info': ['auto_refuse']
+            'info': 'auto_refuse'
         }
 
-        r = supabase.table('logs').insert({
-                'organization': org,
-                'decision': 'refuse',
-                'info': 'auto_refuse'
-            }).execute()
-
-        data['dob'] = data['dob'].strftime('%Y-%m-%d')
-        data['request_date'] = data['request_date'].strftime('%Y-%m-%d')
-
-        r = supabase.table('logs').insert({
-                    'refusal_score': None,
-                    'refusal_percentile': None,
-                    'default_score': None,
-                    'default_percentile': None,
-                    'organization': org,
-                    'decision': 'refuse',
-                    'reason': 'auto-refuse'
-                }).execute()
-
-        supabase.table('attributes').insert({
-            'attributes_json': data,
-            'decision_id': r.data[0]['id']
-        }).execute()
+        save_all(
+            org,
+            'refuse',
+            'auto-refuse',
+            data,
+            details
+        )
 
         return result
 
@@ -222,37 +258,30 @@ def predict_proba(attributes:Attributes, details:AccountDetails|None=None, org='
                 'uw_decision': uw_decision,
                 'score': score,
                 'percentile': percentile,
-                'info': []
+                'info': None
             }
 
-            try:
-                r = supabase.table('logs').insert({
-                    'refusal_score': pred_refusal,
-                    'refusal_percentile': percentile_refusal,
-                    'default_score': pred_default,
-                    'default_percentile': percentile_default,
-                    'organization': org,
-                    'decision': uw_decision,
-                    'reason': None
-                }).execute()
-
-                data['dob'] = data['dob'].strftime('%Y-%m-%d')
-                data['request_date'] = data['request_date'].strftime('%Y-%m-%d')
-
-                supabase.table('attributes').insert({
-                    'attributes_json': data,
-                    'decision_id': r.data[0]['id']
-                }).execute()
-            
-            except Exception as e:
-                print("SUPABASE ERROR")
-                print(e)
+            save_all(
+                org,
+                uw_decision,
+                None,
+                data,
+                details,
+                pred_refusal,
+                percentile_refusal,
+                pred_default,
+                percentile_default
+            )
 
             return result
 
         except EmptyDataFrameException as e:
             info = ['Empty dataframe after filtering',
                     'Possible causes: minimum balance was too low']
+            r = save_decision(org=org, 
+                              decision='n/a', 
+                              info='Empty dataframe after filtering')
+            
             return {
                 'uw_decision': 'n/a',
                 'score': 0,
