@@ -5,8 +5,8 @@ from westgate.flaml_model_core import LendingModel, UWModel, EmptyDataFrameExcep
 from westgate.flaml_model_utils import load_model
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel
-from typing import Literal
+from pydantic import BaseModel, EmailStr
+from typing import Literal, List, Dict, Any
 from datetime import date
 import os
 from supabase import create_client, Client
@@ -23,7 +23,7 @@ SUPABASE_KEY = os.environ['SUPABASE_KEY']
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-class LoanRequest(BaseModel):
+class Attributes(BaseModel):
     
     #refusal
     gender: Literal['male', 'female']
@@ -61,8 +61,8 @@ class LoanRequest(BaseModel):
     sum_disability_income_current_month: float
     sum_disability_income_previous_month: float
     sum_disability_income_2_months_ago: float
-    average_monthly_recurring_transfers_in_complex: float
     average_monthly_recurring_transfers_out_complex: float
+
 
     #default
     employer_income_frequency: str
@@ -85,17 +85,60 @@ class LoanRequest(BaseModel):
     telecom_payments_average: float
     other_loan_payments_average: float
     utility_payments_average: float
+    average_closing_balance_day_after_income: float
+    average_micro_loan_payment: float
+    average_monthly_free_cash_flow: float
+    average_monthly_nsf_fees_count: float
+    average_monthly_recurring_transfers_in_complex: float
+    average_employer_income_deposit: float
 
 
+class Transaction(BaseModel):
+    Date: date
+    Code: Any
+    Description: str
+    Debit: float|None
+    Credit: float|None
+    Balance: float|None
+    Id: str
+
+class Holder(BaseModel):
+    Name: str
+    Address: Dict
+    Email: EmailStr
+    PhoneNumber: str
+
+class AccountInfo(BaseModel):
+    Transactions: List[Transaction]
+    TransitNumber: str|None
+    InstitutionNumber: str|None
+    Title: str|None
+    AccountNumber: str|None
+    LastFourDigits: str|None
+    Balance: Dict
+    Category: str
+    Type: str
+    Currency: str
+    Holder: Holder
+    Id: str
+
+class AccountDetails(BaseModel):
+    HttpStatusCode: int
+    Accounts: List[AccountInfo]
 
 
 @app.get('/')
 def index():
     return {'message': 'Westgate UW'}
 
+
+def process_trx()
+
+
 @app.post('/predict')
-def predict_proba(data:LoanRequest, org='westgate'):
-    data = data.model_dump()
+def predict_proba(attributes:Attributes, details:AccountDetails|None=None, org='westgate'):
+
+    data = attributes.model_dump()
     df = pd.DataFrame.from_dict([data])
 
     auto_refuse = (
@@ -121,6 +164,16 @@ def predict_proba(data:LoanRequest, org='westgate'):
 
         data['dob'] = data['dob'].strftime('%Y-%m-%d')
         data['request_date'] = data['request_date'].strftime('%Y-%m-%d')
+
+        r = supabase.table('logs').insert({
+                    'refusal_score': None,
+                    'refusal_percentile': None,
+                    'default_score': None,
+                    'default_percentile': None,
+                    'organization': org,
+                    'decision': 'refuse',
+                    'reason': 'auto-refuse'
+                }).execute()
 
         supabase.table('attributes').insert({
             'attributes_json': data,
@@ -179,7 +232,8 @@ def predict_proba(data:LoanRequest, org='westgate'):
                     'default_score': pred_default,
                     'default_percentile': percentile_default,
                     'organization': org,
-                    'decision': uw_decision
+                    'decision': uw_decision,
+                    'reason': None
                 }).execute()
 
                 data['dob'] = data['dob'].strftime('%Y-%m-%d')
