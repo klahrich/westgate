@@ -1,0 +1,37 @@
+{
+	"info": {
+		"_postman_id": "1d913fc9-7b79-46c8-8e70-a56b9206c6cd",
+		"name": "Westgate",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "41309595",
+		"_collection_link": "https://planetary-station-232119.postman.co/workspace/My-Workspace~435bfe1b-094b-447d-8215-197c486b749e/collection/41309595-1d913fc9-7b79-46c8-8e70-a56b9206c6cd?action=share&source=collection_link&creator=41309595"
+	},
+	"item": [
+		{
+			"name": "predict",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"attributes\":\r\n    {\r\n        \"gender\": \"male\",\r\n        \"dob\": \"1981-04-01\",\r\n        \"request_date\": \"2025-04-01\",\r\n        \"account_age_days\": 90,\r\n        \"count_nsf_90_days\": 5,\r\n        \"count_nsf_30_days\": 3,\r\n        \"count_stop_payment_90_days\": 0,\r\n        \"sum_micro_loan_payments_current_month\": 0,\r\n        \"sum_micro_loan_payments_previous_month\": 0,\r\n        \"sum_micro_loan_payments_2_months_ago\": 0,\r\n        \"recurring_deposits_current_month\": 0,\r\n        \"recurring_deposits_previous_month\": 0,\r\n        \"recurring_deposits_2_months_ago\": 0,\r\n        \"count_active_days\": 0,\r\n        \"sum_total_income_current_month\": 0,\r\n        \"sum_total_income_previous_month\": 0,\r\n        \"sum_total_income_2_months_ago\": 0,\r\n        \"sum_loan_payments_current_month\": 0,\r\n        \"sum_loan_payments_previous_month\": 0,\r\n        \"sum_loan_payments_2_months_ago\": 0,\r\n        \"sum_loan_deposits_30_days\": 0,\r\n        \"sum_loan_deposits_60_days\": 0,\r\n        \"sum_loan_deposits_90_days\": 0,\r\n        \"sum_government_income_current_month\": 0,\r\n        \"sum_government_income_previous_month\": 0,\r\n        \"sum_government_income_2_months_ago\": 0,\r\n        \"sum_employment_insurance_income_current_month\": 0,\r\n        \"sum_employment_insurance_income_previous_month\": 0,\r\n        \"sum_employment_insurance_income_2_months_ago\": 0,\r\n        \"sum_employer_income_current_month\": 0,\r\n        \"sum_employer_income_previous_month\": 0,\r\n        \"sum_employer_income_2_months_ago\": 0,\r\n        \"sum_disability_income_current_month\": 0,\r\n        \"sum_disability_income_previous_month\": 0,\r\n        \"sum_disability_income_2_months_ago\": 0,\r\n        \"average_monthly_recurring_transfers_out_complex\": 0,\r\n\r\n        \"employer_income_frequency\": \"monthly\",\r\n        \"average_closing_balance_day_after_employer_income\": 0,\r\n        \"average_closing_balance_day_of_employer_income\": 0,\r\n        \"balance_90_days_ago\": 0,\r\n        \"balance_current\": 0,\r\n        \"balance_min\": 0,\r\n        \"count_loan_payments_current_month\": 0,\r\n        \"count_loan_payments_previous_month\": 0,\r\n        \"count_distinct_micro_lenders\": 0,\r\n        \"count_days_negative_balance_90_days\": 0,\r\n        \"sum_non_employer_income_current_month\": 0,\r\n        \"sum_non_employer_income_previous_month\": 0,\r\n        \"sum_non_employer_income_2_months_ago\": 0,\r\n        \"sum_non_employer_income\": 0,\r\n        \"average_closing_balance_day_of_income\": 0,\r\n        \"average_monthly_micro_loan_payments_complex\": 0,\r\n        \"average_monthly_utility_payments_complex\": 0,\r\n        \"telecom_payments_average\": 0,\r\n        \"other_loan_payments_average\": 0,\r\n        \"utility_payments_average\": 0,\r\n        \"average_closing_balance_day_after_income\": 0,\r\n        \"average_micro_loan_payment\": 0,\r\n        \"average_monthly_free_cash_flow\": 0,\r\n        \"average_monthly_nsf_fees_count\": 0,\r\n        \"average_monthly_recurring_transfers_in_complex\": 0,\r\n        \"average_employer_income_deposit\": 0\r\n    }\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/predict",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"predict"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

@@ -1,0 +1,2 @@
+threshold_default = 0.6
+threshold_refusal = 0.75
