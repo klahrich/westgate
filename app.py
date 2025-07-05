@@ -34,8 +34,8 @@ logger.info("App started")
 
 #######################################
 #--- Uncomment this for local testing
-# from dotenv import load_dotenv
-# load_dotenv()
+from dotenv import load_dotenv
+load_dotenv()
 #---
 
 app = FastAPI()
@@ -301,9 +301,22 @@ def compute_auto_refuse(transactions:AccountTransactions|None, request_date:date
 
 
 @app.post('/predict')
-def predict(attributes:Attributes, 
-            transactions:AccountTransactions|None=None, 
+def predict(attributes:Attributes,
+            transactions:AccountTransactions|None=None,
             org='westgate'):
+    
+    # Fetch latest thresholds from Supabase
+    thresholds_resp = supabase.table('thresholds').select('*').order('created_at', desc=True).limit(1).execute()
+    if not thresholds_resp.data or len(thresholds_resp.data) == 0:
+        raise RuntimeError("No threshold record found in Supabase table 'thresholds'")
+    latest_thresholds = thresholds_resp.data[0]
+    refusal_threshold = int(latest_thresholds.get('refusal_threshold') * 100)
+    default_threshold = int(latest_thresholds.get('default_threshold') * 100)
+    if refusal_threshold is None or default_threshold is None:
+        raise RuntimeError("Threshold record missing required fields")
+    
+    logger.info(f"Refusal threshold: {refusal_threshold}")
+    logger.info(f"Default threshold: {default_threshold}")
 
     print(f"Org: {org}")
 
@@ -367,8 +380,8 @@ def predict(attributes:Attributes,
 
             percentile = 0.5 * (percentile_refusal + percentile_default)
 
-            if (pred_refusal >= model_refusal.percentiles[40]) or \
-                (pred_default >= model_default.percentiles[80]):
+            if (pred_refusal >= model_refusal.percentiles[refusal_threshold]) or \
+                (pred_default >= model_default.percentiles[default_threshold]):
                 uw_decision = 'refuse'
             else:
                 uw_decision = 'accept'
