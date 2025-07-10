@@ -1,6 +1,7 @@
 from queue import Empty
 import uvicorn
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, Depends, HTTPException, status
+from fastapi.security import APIKeyHeader
 from westgate.flaml_model_core import LendingModel, UWModel, EmptyDataFrameException
 from westgate.flaml_model_utils import load_model
 from westgate.auto_refuse import detect_pattern
@@ -34,8 +35,8 @@ logger.info("App started")
 
 #######################################
 #--- Uncomment this for local testing
-from dotenv import load_dotenv
-load_dotenv()
+# from dotenv import load_dotenv
+# load_dotenv()
 #---
 
 app = FastAPI()
@@ -46,6 +47,18 @@ SUPABASE_URL = os.environ['SUPABASE_URL']
 SUPABASE_KEY = os.environ['SUPABASE_KEY']
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Define the API key security scheme
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
+
+# Create a dependency function to validate the API key
+async def get_api_key(api_key: str = Depends(api_key_header)):
+    if api_key != os.environ.get("WESTGATE_API_KEY"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key",
+        )
+    return api_key
 
 class Attributes(BaseModel):
     
@@ -303,7 +316,8 @@ def compute_auto_refuse(transactions:AccountTransactions|None, request_date:date
 @app.post('/predict')
 def predict(attributes:Attributes,
             transactions:AccountTransactions|None=None,
-            org='westgate'):
+            org='westgate',
+            api_key: str = Depends(get_api_key)):
     
     # Fetch latest thresholds from Supabase
     thresholds_resp = supabase.table('thresholds').select('*').order('created_at', desc=True).limit(1).execute()

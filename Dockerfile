@@ -20,7 +20,8 @@ RUN pip install \
     plotly==5.18.0 \
     xgboost==2.0.3 \
     supabase==2.4.3 \
-    dill==0.3.8
+    dill==0.3.8 \ 
+    pydantic[email]
 
 # Expose the port the app runs on
 EXPOSE 8080
